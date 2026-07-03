@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>이유식 큐브 재고관리 서비스 리서치</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; color: #17212b; margin: 0; background: #f7f8fa; }
+    main { max-width: 920px; margin: 0 auto; padding: 40px 20px 64px; background: #fff; }
+    h1 { font-size: 30px; margin: 0 0 20px; }
+    h2 { font-size: 20px; margin-top: 34px; border-top: 1px solid #e4e7eb; padding-top: 22px; }
+    h3 { font-size: 16px; margin-top: 22px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+    th, td { border: 1px solid #d8dde3; padding: 8px 10px; vertical-align: top; }
+    th { background: #f0f3f6; text-align: left; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { background: #f3f5f7; padding: 14px; overflow-x: auto; border-radius: 6px; }
+    .summary { background: #eef6f3; border-left: 4px solid #2f7d5b; padding: 14px 16px; }
+    a { color: #145ea8; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>이유식 큐브 재고관리 서비스 리서치</h1>
+  <section class="summary">
+    <strong>결론:</strong> 추천 기본안은 GitHub Pages를 데이터베이스처럼 쓰는 구조가 아니라, 정적 PWA에 IndexedDB를 붙인 local-first 앱입니다. GitHub Pages나 Cloudflare Pages에는 UI만 올리고, 아이 식단·재고·반응 데이터는 기본적으로 로컬에 둡니다.
+  </section>
+
+  <h2>추천 아키텍처</h2>
+  <h3>1단계 MVP</h3>
+  <ul>
+    <li>정적 PWA: GitHub Pages 또는 Cloudflare Pages 배포.</li>
+    <li>Primary data: IndexedDB.</li>
+    <li>Backup: JSON/CSV export, optional encrypted backup.</li>
+    <li>UI tabs: 오늘, 식단표, 큐브, 재료, 조합, 기록.</li>
+    <li>AI: 직접 쓰기 대신 구조화 변경안 preview/import.</li>
+  </ul>
+
+  <h3>공유가 필요해질 때</h3>
+  <ul>
+    <li>가장 단순: Firebase Firestore.</li>
+    <li>개발자 제어권 중시: Cloudflare Pages + Workers + D1.</li>
+    <li>브라우저 local-first sync 중시: Dexie Cloud.</li>
+  </ul>
+
+  <h2>요구 기능 대응</h2>
+  <table>
+    <thead><tr><th>요구</th><th>설계</th></tr></thead>
+    <tbody>
+      <tr><td>재고관리</td><td><code>CubeLot</code>에 제조일, 소비기한, 남은 큐브 수, g/ml per cube 저장.</td></tr>
+      <tr><td>수량 미달 확인</td><td><code>StockRule</code>로 최소 큐브 수와 주간 식단 예약분 반영.</td></tr>
+      <tr><td>아직 안먹어본 식재료 등록</td><td><code>Ingredient.status</code>를 <code>not_tried/planned/testing/tolerated</code>로 관리.</td></tr>
+      <tr><td>큐브 조합 관리</td><td><code>Combination</code>에 필요한 큐브, 단계, 질감, 알레르기 태그 저장.</td></tr>
+      <tr><td>1주일 식단 관리</td><td><code>MealPlanSlot</code>으로 날짜, 식사 종류, 조합, 도입 식재료 관리.</td></tr>
+      <tr><td>UI + AI 업데이트</td><td>모바일 PWA + AI 변경안 preview/import.</td></tr>
+      <tr><td>GitHub Pages 확인</td><td>앱 셸 배포에는 적합, 원본 개인정보 데이터 배포에는 부적합.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>AI 업데이트 파이프라인</h2>
+  <ol>
+    <li>사용자가 “소고기 큐브 6개 만들었어”라고 요청.</li>
+    <li>AI가 구조화 변경안을 생성.</li>
+    <li>validator가 SKU, 단위, 수량, 권한, 음수 재고, 중복 요청을 검사.</li>
+    <li>애매하거나 큰 변경은 확인 요청.</li>
+    <li>append-only event로 저장.</li>
+    <li>현재 재고와 식단을 재계산.</li>
+    <li>감사 로그와 rollback handle을 남김.</li>
+  </ol>
+
+  <pre><code>{
+  "operation": "add_stock",
+  "product_id": "prod_beef_cube",
+  "quantity": 6,
+  "unit": "cube",
+  "grams_per_cube": 15,
+  "expires_on": "2026-08-15"
+}</code></pre>
+
+  <h2>GitHub 기반을 꼭 쓰는 경우</h2>
+  <p>GitHub은 데이터베이스가 아니라 감사 가능한 변경 로그와 PR 시스템으로 사용합니다. AI는 branch와 PR만 만들고, 검증 workflow가 통과해야 merge합니다. raw baby/family data는 <code>public/</code>에 배포하지 않습니다.</p>
+
+  <pre><code>schemas/
+data/
+  products/
+  events/
+  generated/
+scripts/
+  validate-data.mjs
+  materialize-inventory.mjs
+  redact-public-data.mjs
+.github/
+  workflows/validate.yml
+  workflows/pages.yml</code></pre>
+
+  <h2>최종 추천</h2>
+  <p>처음 만들 때는 local-first PWA로 시작하는 것이 가장 안전하고 단순합니다. 가족 간 실시간 공유가 실제 요구가 되면 Firestore 또는 Dexie Cloud로 sync를 붙이고, 운영/비용 통제를 더 원하면 Cloudflare Workers + D1로 갑니다.</p>
+  <p>GitHub Pages + AI commit 방식은 앱 배포와 변경 감사에는 좋지만, 아이 식단 데이터 원본 저장소로는 기본값이 아닙니다.</p>
+
+  <h2>한계와 확인 필요 사항</h2>
+  <ul>
+    <li>이 보고서는 desk research 기반입니다. 실제 부모 사용성은 빠른 기록과 AI 변경 확인 사이의 마찰을 사용자 인터뷰나 프로토타입 테스트로 확인해야 합니다.</li>
+    <li>앱은 식재료 도입과 반응을 기록할 수는 있지만 알레르기나 영양 상태를 진단하면 안 됩니다. AI 영양 분석이나 의료적 조언을 넣는다면 별도 법률·의료 검토가 필요합니다.</li>
+    <li>암호화 백업은 추천 방향이지만, 실제 비밀번호 복구 정책과 휴대폰 성능에서의 KDF 비용은 구현 전에 측정해야 합니다.</li>
+    <li>GitHub 기반 업데이트는 감사/배포 워크플로로는 유용하지만 실시간 동기화 DB가 아닙니다. 가족 다중기기 동기화가 핵심 요구가 되면 Firestore, Dexie Cloud, Cloudflare D1 같은 동기화 계층을 별도로 선택해야 합니다.</li>
+  </ul>
+
+  <h2>주요 출처</h2>
+  <ul>
+    <li><a href="https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages">GitHub Pages overview</a></li>
+    <li><a href="https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site">GitHub Pages site creation and warnings</a></li>
+    <li><a href="https://docs.github.com/en/enterprise-cloud@latest/pages/getting-started-with-github-pages/changing-the-visibility-of-your-github-pages-site">GitHub Enterprise private Pages</a></li>
+    <li><a href="https://docs.github.com/en/rest/repos/contents">GitHub repository contents API</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB">MDN IndexedDB</a></li>
+    <li><a href="https://firebase.google.com/docs/firestore/manage-data/enable-offline">Firestore offline persistence</a></li>
+    <li><a href="https://firebase.google.com/docs/firestore/quotas">Firestore quotas</a></li>
+    <li><a href="https://developers.cloudflare.com/d1/platform/pricing/">Cloudflare D1 pricing</a></li>
+    <li><a href="https://genai.owasp.org/llmrisk/llm01-prompt-injection/">OWASP LLM Prompt Injection</a></li>
+    <li><a href="https://docs.github.com/en/actions/reference/security/secure-use">GitHub Actions secure use</a></li>
+  </ul>
+</main>
+</body>
+</html>
