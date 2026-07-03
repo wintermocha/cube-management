@@ -2,7 +2,10 @@
   "scripts": {
     "test": "node --test",
     "build": "node scripts/build.mjs",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name baby-food-cube-management"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name baby-food-cube-management",
+    "domain:list": "node scripts/pages-domain.mjs list",
+    "domain:get": "node scripts/pages-domain.mjs get",
+    "domain:add": "node scripts/pages-domain.mjs add"
   },
   "devDependencies": {
     "wrangler": "^4.107.0"

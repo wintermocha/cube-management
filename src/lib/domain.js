@@ -8,8 +8,12 @@ export function stockSeverity(count) {
   return 'ok';
 }
 
+export function activeIngredients(ingredients) {
+  return ingredients.filter((ingredient) => ingredient.status !== 'cancelled' && !ingredient.deleted_at);
+}
+
 export function summarizeInventory(ingredients, lots) {
-  return ingredients.map((ingredient) => {
+  return activeIngredients(ingredients).map((ingredient) => {
     const ingredientLots = lots.filter((lot) => lot.ingredient_id === ingredient.id && !lot.deleted_at);
     const current_count = ingredientLots.reduce((sum, lot) => sum + Number(lot.remaining_count || 0), 0);
     return {
@@ -24,6 +28,21 @@ export function summarizeInventory(ingredients, lots) {
       lots: ingredientLots.sort(compareLotsForUse),
     };
   });
+}
+
+export function removeIngredientFromState(data, ingredientId, deletedAt) {
+  const ingredient = activeIngredients(data.ingredients).find((item) => item.id === ingredientId);
+  if (!ingredient) return { removed: false, state: data, ingredient: null, clearedLotCount: 0 };
+  const cubeLots = data.cubeLots.map((lot) => {
+    if (lot.ingredient_id !== ingredientId || lot.deleted_at) return lot;
+    return { ...lot, remaining_count: 0, deleted_at: deletedAt, updated_at: deletedAt };
+  });
+  const clearedLotCount = cubeLots.filter((lot) => lot.ingredient_id === ingredientId && lot.deleted_at === deletedAt).length;
+  const ingredients = data.ingredients.map((item) => {
+    if (item.id !== ingredientId) return item;
+    return { ...item, status: 'cancelled', deleted_at: deletedAt, updated_at: deletedAt };
+  });
+  return { removed: true, state: { ...data, ingredients, cubeLots }, ingredient, clearedLotCount };
 }
 
 export function calculateForecast({ ingredients, lots, combinations, combinationItems, mealPlanSlots, startDate, days = 7 }) {
@@ -47,7 +66,7 @@ export function calculateForecast({ ingredients, lots, combinations, combination
     }
   }
 
-  return ingredients.map((ingredient) => {
+  return activeIngredients(ingredients).map((ingredient) => {
     const available = stock.get(ingredient.id) || 0;
     const required = needed.get(ingredient.id) || 0;
     return {
@@ -88,7 +107,7 @@ export function parseKoreanAddStock(rawText, ingredients) {
   const qtyMatch = raw.match(/(\d+)\s*(개|cube|큐브)?/i);
   const quantity = qtyMatch ? Number(qtyMatch[1]) : null;
   const normalized = raw.replace(/\s+/g, '').toLowerCase();
-  const matches = ingredients.filter((ingredient) => normalized.includes(String(ingredient.name).replace(/\s+/g, '').toLowerCase()));
+  const matches = activeIngredients(ingredients).filter((ingredient) => normalized.includes(String(ingredient.name).replace(/\s+/g, '').toLowerCase()));
   const deleteLike = /(삭제|버려|차감|먹였|사용|줄여)/.test(raw);
   const authLike = /(계정|권한|토큰|credential|비밀번호|초대)/i.test(raw);
   const medicalLike = /(알레르기|진단|영양|반응이상|의사)/.test(raw);

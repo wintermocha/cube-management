@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seedData } from '../src/lib/seed.js';
-import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots } from '../src/lib/domain.js';
+import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState } from '../src/lib/domain.js';
 
 test('current stock severity follows PRD thresholds', () => {
   assert.equal(stockSeverity(4), 'ok');
@@ -42,4 +42,13 @@ test('manual stock use consumes FEFO lots first', () => {
     { id: 'soon', ingredient_id: 'ing', expires_at: '2026-07-10', made_at: '2026-07-02', remaining_count: 2 },
   ], 'ing', 3);
   assert.deepEqual(result.consumed_lots.map((lot) => [lot.lot_id, lot.used_count]), [['soon', 2], ['late', 1]]);
+});
+
+test('deleted ingredients disappear and their stock is cleared', () => {
+  const data = seedData();
+  const result = removeIngredientFromState(data, 'ing-broccoli', '2026-07-04T00:00:00.000Z');
+  assert.equal(result.removed, true);
+  assert.equal(activeIngredients(result.state.ingredients).some((item) => item.id === 'ing-broccoli'), false);
+  assert.equal(result.state.cubeLots.find((lot) => lot.id === 'lot-broccoli-1').remaining_count, 0);
+  assert.equal(summarizeInventory(result.state.ingredients, result.state.cubeLots).some((item) => item.ingredient_id === 'ing-broccoli'), false);
 });

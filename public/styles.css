@@ -193,33 +193,6 @@ small,
   padding: var(--space-5) var(--space-5) var(--space-12);
 }
 
-.workbench {
-  display: grid;
-  gap: var(--space-5);
-  padding: var(--space-5) 0 var(--space-4);
-}
-
-.workbench-copy {
-  display: grid;
-  align-content: center;
-  gap: var(--space-2);
-}
-
-.workbench h1 {
-  max-width: 13ch;
-  color: var(--color-ink);
-  font-size: 30px;
-  font-weight: 700;
-  line-height: 40px;
-}
-
-.workbench-copy p:not(.eyebrow) {
-  color: var(--color-muted);
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 24px;
-}
-
 .eyebrow {
   color: var(--color-faint);
   font-size: 12px;
@@ -227,32 +200,31 @@ small,
   line-height: 18px;
 }
 
-.quick-add {
+.inline-form,
+.form-card {
   display: grid;
-  align-content: start;
   gap: var(--space-3);
+}
+
+.form-card {
   border: 0;
   border-radius: var(--radius-tool);
   background: var(--color-surface);
   box-shadow: var(--shadow-standard);
-  padding: var(--space-6);
+  padding: var(--space-5);
 }
 
-.quick-add h2 {
-  color: var(--color-ink);
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 30px;
-}
-
-.quick-form,
-.inline-form {
+.field {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  color: var(--color-strong);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
 }
 
-.quick-form input {
-  width: 100%;
+.field span {
+  color: var(--color-muted);
 }
 
 .button {
@@ -299,6 +271,23 @@ small,
   color: var(--color-accent-hover);
 }
 
+.button-danger {
+  background: rgba(251, 136, 144, 0.15);
+  color: #e42939;
+}
+
+.button-danger:hover {
+  background: rgba(251, 136, 144, 0.24);
+  color: #c81e2d;
+}
+
+.button-small {
+  min-height: 40px;
+  border-radius: 10px;
+  padding: 0 var(--space-3);
+  font-size: 14px;
+}
+
 .button-link {
   margin-left: var(--space-2);
   min-height: 32px;
@@ -315,6 +304,14 @@ small,
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
+}
+
+.app-toast:empty {
+  display: none;
+}
+
+.app-toast:not(:empty) {
+  margin-bottom: var(--space-3);
 }
 
 .toast:not(:empty) {
@@ -338,7 +335,7 @@ small,
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  margin-top: 0;
 }
 
 .metric,
@@ -539,6 +536,14 @@ small,
   min-width: 0;
 }
 
+.alert-row .button {
+  flex: 0 0 auto;
+}
+
+.action-row {
+  align-items: center;
+}
+
 em {
   font-style: normal;
   font-size: 13px;
@@ -615,6 +620,31 @@ em {
 
 .inventory-card em {
   grid-column: 1 / -1;
+}
+
+.stock-add-form,
+.ingredient-form {
+  margin-bottom: var(--space-3);
+}
+
+.ingredient-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.ingredient-card > div:first-child {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.item-management {
+  margin-top: var(--space-2);
 }
 
 .meal-card b,
@@ -717,26 +747,8 @@ em {
     padding: var(--space-4) var(--space-5) var(--space-12);
   }
 
-  .workbench {
-    gap: var(--space-4);
-    padding: var(--space-4) 0;
-  }
-
-  .workbench h1 {
-    font-size: 30px;
-    line-height: 40px;
-  }
-
-  .workbench-copy {
-    gap: var(--space-2);
-  }
-
-  .quick-add {
-    padding: var(--space-5);
-  }
-
-  .quick-form .button {
-    width: 100%;
+  .form-card {
+    padding: var(--space-4);
   }
 
   .tab-button {
