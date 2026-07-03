@@ -5,4 +5,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "baby-food-cube"
-database_id = "replace-with-cloudflare-d1-database-id"
+database_id = "4baf0d0d-cfd2-4391-bdb1-6fe1ca5b8bcd"
