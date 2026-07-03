@@ -1,6 +1,6 @@
 # Cloudflare Pages deployment
 
-This repository deploys the `baby-food-cube-management` Cloudflare Pages project when `main` is pushed. A merged pull request to `main` triggers `.github/workflows/deploy-cloudflare-pages.yml`, which installs dependencies, runs tests, builds `dist`, checks that Cloudflare credentials are present, and deploys with Wrangler.
+This repository can deploy the `baby-food-cube-management` Cloudflare Pages project when `main` is pushed. A merged pull request to `main` triggers `.github/workflows/deploy-cloudflare-pages.yml`, which installs dependencies, runs tests, builds `dist`, checks for Cloudflare credentials, and deploys with Wrangler when the credentials are configured.
 
 ## Required GitHub secrets
 
@@ -10,6 +10,8 @@ Add these repository secrets in GitHub under Settings > Secrets and variables > 
 - `CLOUDFLARE_API_TOKEN`: a Cloudflare API token with Account > Cloudflare Pages > Edit permission.
 
 The workflow only passes these values as environment variables to Wrangler. It does not print or store the secret values.
+
+If either secret is missing, the workflow still runs tests and builds `dist`, then skips the Cloudflare upload with a notice. Local deploys can still be run from an authenticated Wrangler CLI with `npm run deploy`.
 
 ## Cost posture
 
