@@ -5,14 +5,21 @@ const STORAGE_KEY = 'baby-food-cube-cloudflare-mvp';
 let state = loadState();
 let undoTimer = null;
 
+const severityLabels = { ok: '충분', warn: '주의', error: '긴급' };
+const statusLabels = { not_tried: '미시도', planned: '예정', testing: '테스트 중', tolerated: '적응 완료', suspected_reaction: '반응 의심', cancelled: '취소' };
+const eventLabels = { stock_add: '재고 추가', stock_add_rollback: '자동 반영 취소', ingredient_create: '재료 등록' };
+const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  return saved ? JSON.parse(saved) : seedData();
+  try { return saved ? JSON.parse(saved) : seedData(); } catch { localStorage.removeItem(STORAGE_KEY); return seedData(); }
 }
 function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); }
 function id(prefix) { return `${prefix}-${crypto.randomUUID()}`; }
 function now() { return new Date().toISOString(); }
 function actor() { return 'caregiver-a@example.com'; }
+function text(value) { return String(value ?? '').replace(/[&<>"']/g, (char) => escapeMap[char]); }
+function label(map, value) { return map[value] || text(value); }
 function logEvent(type, payload, before = null, after = null, source = 'manual') {
   const event = { id: id('evt'), household_id: 'home', actor_email: actor(), source, type, payload_json: JSON.stringify(payload), before_json: before && JSON.stringify(before), after_json: after && JSON.stringify(after), created_at: now(), undo_event_id: null };
   state.events.unshift(event);
@@ -23,36 +30,202 @@ function render() {
   const weekStart = document.querySelector('#weekStart')?.value || '2026-07-03';
   const inventory = summarizeInventory(state.ingredients, state.cubeLots);
   const forecast = calculateForecast({ ingredients: state.ingredients, lots: state.cubeLots, combinations: state.combinations, combinationItems: state.combinationItems, mealPlanSlots: state.mealPlanSlots, startDate: weekStart });
+  const critical = inventory.filter((item) => item.severity === 'error');
+  const warnings = inventory.filter((item) => item.severity === 'warn');
+  const shortages = forecast.filter((item) => item.shortage > 0);
+  const totalCubes = inventory.reduce((sum, item) => sum + item.current_count, 0);
+  const nextMealCount = state.mealPlanSlots.filter((slot) => slot.status !== 'cancelled').length;
   document.querySelector('#app').innerHTML = `
-    <header><div><strong>이유식 큐브</strong><span>Cloudflare-first MVP</span></div><button id="reset">샘플 초기화</button></header>
-    <main>
-      <section class="hero"><h1>오늘</h1><p>${state.childProfile.display_name}의 현재 재고 경고와 7일 식단 부족 예정을 분리해서 보여줍니다.</p></section>
-      <section class="grid alerts">
-        ${panel('error 재고', inventory.filter(i=>i.severity==='error').map(stockCard).join('') || '<p>없음</p>')}
-        ${panel('warn 재고', inventory.filter(i=>i.severity==='warn').map(stockCard).join('') || '<p>없음</p>')}
-        ${panel('부족 예정', forecast.filter(f=>f.shortage>0).map(f=>`<article class="card shortage"><b>${f.ingredient_name}</b><span>${f.needed}개 필요 / ${f.available}개 보유</span><em>부족 예정 ${f.shortage}개</em></article>`).join('') || '<p>없음</p>')}
+    <a class="skip-link" href="#main">본문으로 이동</a>
+    <header class="topbar">
+      <div class="brand">
+        <strong>이유식 큐브</strong>
+        <span>재고 · 식단 · 승인 기록</span>
+      </div>
+      <button id="reset" class="button button-secondary" type="button">샘플 초기화</button>
+    </header>
+    <main id="main" class="app-shell">
+      <section class="hero" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <p class="eyebrow">오늘의 큐브 현황</p>
+          <h1 id="heroTitle">${text(state.childProfile.display_name)}의 재고와 식단을 한눈에</h1>
+          <p>현재 재고 경고와 7일 부족 예정을 분리해 보여주고, 자주 쓰는 재고 추가를 바로 처리합니다.</p>
+        </div>
+        <div class="quick-add" aria-labelledby="quickAddTitle">
+          <div>
+            <p class="eyebrow">빠른 입력</p>
+            <h2 id="quickAddTitle">AI 재고 추가</h2>
+          </div>
+          <form id="aiForm" class="quick-form">
+            <label class="sr-only" for="aiRaw">추가할 재고 내용</label>
+            <input id="aiRaw" name="raw" autocomplete="off" placeholder="예: 소고기 큐브 6개 만들었어">
+            <button class="button button-primary" type="submit">반영</button>
+          </form>
+          <p class="hint">재고 추가 1-30개만 자동 반영하고, 삭제, 권한, 진단 요청은 승인 대기 또는 거부됩니다.</p>
+          <div id="toast" class="toast" aria-live="polite"></div>
+        </div>
+        <div class="metrics" aria-label="요약 지표">
+          ${metricTile('총 보유', `${totalCubes}개`, `${inventory.length}개 재료`, 'neutral')}
+          ${metricTile('긴급', `${critical.length}건`, critical.length ? '바로 확인 필요' : '현재 없음', critical.length ? 'error' : 'success')}
+          ${metricTile('주의', `${warnings.length}건`, warnings.length ? '재고 낮음' : '안정적', warnings.length ? 'warning' : 'success')}
+          ${metricTile('부족 예정', `${shortages.length}건`, `${nextMealCount}개 식단 반영`, shortages.length ? 'error' : 'success')}
+        </div>
       </section>
-      <section class="panel"><h2>AI 재고 추가</h2><form id="aiForm"><input name="raw" placeholder="예: 소고기 큐브 6개 만들었어"/><button>반영</button></form><p class="hint">자동 반영은 재고 추가(1-30개)만 허용하고, 삭제/권한/진단 요청은 승인 대기 또는 거부됩니다.</p><div id="toast"></div></section>
-      <section class="panel"><h2>큐브</h2><div class="cards">${inventory.map(stockCard).join('')}</div><form id="lotForm" class="inline"><select name="ingredient_id">${state.ingredients.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}</select><input name="initial_count" type="number" min="1" max="200" value="1"/><button>수동 재고 추가</button></form></section>
-      <section class="panel"><h2>식단표</h2><label>시작일 <input id="weekStart" value="${weekStart}" type="date"/></label><div class="cards">${state.mealPlanSlots.map(slotCard).join('')}</div></section>
-      <section class="panel"><h2>재료</h2><form id="ingredientForm" class="inline"><input name="name" placeholder="새 재료"/><select name="status"><option>not_tried</option><option>planned</option><option>testing</option><option>tolerated</option><option>suspected_reaction</option></select><button>등록</button></form><div class="cards">${state.ingredients.map(i=>`<article class="card"><b>${i.name}</b><span>${i.category || '카테고리 없음'}</span><em>${i.status}</em>${i.status==='suspected_reaction'?'<small>진단이 아닌 기록 상태입니다.</small>':''}</article>`).join('')}</div></section>
-      <section class="panel"><h2>조합</h2><div class="cards">${state.combinations.map(comboCard).join('')}</div></section>
-      <section class="panel"><h2>기록 / 승인 대기</h2><h3>승인 대기</h3><div class="cards">${state.approvalRequests.map(r=>`<article class="card"><b>${r.request_type}</b><span>${r.status}</span><small>${JSON.stringify(JSON.parse(r.payload_json))}</small></article>`).join('') || '<p>없음</p>'}</div><h3>최근 이벤트</h3><div class="cards">${state.events.slice(0,10).map(e=>`<article class="card"><b>${e.type}</b><span>${e.actor_email} · ${e.source}</span><small>${e.created_at}</small></article>`).join('') || '<p>없음</p>'}</div></section>
+
+      <section class="section" aria-labelledby="alertTitle">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">우선순위</p>
+            <h2 id="alertTitle">오늘 확인할 것</h2>
+          </div>
+          <p>재고 상태와 식단 부족을 따로 보며, 가장 급한 항목부터 처리합니다.</p>
+        </div>
+        <div class="alert-grid">
+          ${alertGroup('긴급 재고', critical, '긴급 재고가 없습니다.', 'error')}
+          ${alertGroup('주의 재고', warnings, '주의 재고가 없습니다.', 'warning')}
+          ${shortageGroup(shortages)}
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="cubeTitle">
+        <div class="section-head section-head-inline">
+          <div>
+            <p class="eyebrow">냉동실</p>
+            <h2 id="cubeTitle">큐브 재고</h2>
+          </div>
+          <form id="lotForm" class="inline-form">
+            <label class="sr-only" for="lotIngredient">재료</label>
+            <select id="lotIngredient" name="ingredient_id">${state.ingredients.map((item) => `<option value="${text(item.id)}">${text(item.name)}</option>`).join('')}</select>
+            <label class="sr-only" for="lotCount">추가 수량</label>
+            <input id="lotCount" name="initial_count" type="number" min="1" max="200" value="1">
+            <button class="button button-primary" type="submit">수동 추가</button>
+          </form>
+        </div>
+        <div class="card-grid inventory-grid">${inventory.map(stockCard).join('')}</div>
+      </section>
+
+      <section class="section" aria-labelledby="mealTitle">
+        <div class="section-head section-head-inline">
+          <div>
+            <p class="eyebrow">7일 계획</p>
+            <h2 id="mealTitle">식단표</h2>
+          </div>
+          <label class="date-control">시작일 <input id="weekStart" value="${text(weekStart)}" type="date"></label>
+        </div>
+        <div class="card-grid meal-grid">${state.mealPlanSlots.map(slotCard).join('')}</div>
+      </section>
+
+      <div class="split-grid">
+        <section class="section" aria-labelledby="ingredientTitle">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">재료 상태</p>
+              <h2 id="ingredientTitle">재료</h2>
+            </div>
+          </div>
+          <form id="ingredientForm" class="inline-form ingredient-form">
+            <label class="sr-only" for="ingredientName">새 재료명</label>
+            <input id="ingredientName" name="name" placeholder="새 재료">
+            <label class="sr-only" for="ingredientStatus">상태</label>
+            <select id="ingredientStatus" name="status">${Object.keys(statusLabels).filter((item) => item !== 'cancelled').map((item) => `<option value="${item}">${statusLabels[item]}</option>`).join('')}</select>
+            <button class="button button-primary" type="submit">등록</button>
+          </form>
+          <div class="card-grid compact-grid">${state.ingredients.map(ingredientCard).join('')}</div>
+        </section>
+
+        <section class="section" aria-labelledby="comboTitle">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">레시피</p>
+              <h2 id="comboTitle">조합</h2>
+            </div>
+          </div>
+          <div class="card-grid compact-grid">${state.combinations.map(comboCard).join('')}</div>
+        </section>
+      </div>
+
+      <section class="section" aria-labelledby="activityTitle">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">감사 기록</p>
+            <h2 id="activityTitle">승인 대기와 최근 이벤트</h2>
+          </div>
+        </div>
+        <div class="activity-grid">
+          <div>
+            <h3>승인 대기</h3>
+            <div class="card-grid compact-grid">${state.approvalRequests.map(approvalCard).join('') || emptyState('승인 대기 요청이 없습니다.')}</div>
+          </div>
+          <div>
+            <h3>최근 이벤트</h3>
+            <div class="card-grid compact-grid">${state.events.slice(0, 10).map(eventCard).join('') || emptyState('아직 기록이 없습니다.')}</div>
+          </div>
+        </div>
+      </section>
     </main>`;
   bind();
 }
-function panel(title, body) { return `<section class="panel"><h2>${title}</h2>${body}</section>`; }
-function stockCard(item) { return `<article class="card ${item.severity}"><b>${item.ingredient_name}</b><span>${item.current_count}개 ${item.empty_label || ''}</span><em>${item.severity}</em></article>`; }
-function slotCard(s) { const combo = state.combinations.find(c=>c.id===s.combination_id); const ing = state.ingredients.find(i=>i.id===s.ingredient_id); return `<article class="card"><b>${s.date} ${s.meal_type}</b><span>${combo?.name || ing?.name || '비어 있음'}</span><em>${s.status}</em></article>`; }
-function comboCard(c) { const items = state.combinationItems.filter(i=>i.combination_id===c.id).map(i=>`${state.ingredients.find(x=>x.id===i.ingredient_id)?.name} ${i.cube_count}개`).join(', '); return `<article class="card"><b>${c.name}</b><span>${c.stage || ''} ${c.texture || ''}</span><small>${items}</small></article>`; }
+function metricTile(labelText, value, detail, tone) { return `<article class="metric metric-${tone}"><span>${text(labelText)}</span><strong>${text(value)}</strong><small>${text(detail)}</small></article>`; }
+function alertGroup(title, items, emptyCopy, tone) { return `<div class="alert-group alert-${tone}"><h3>${text(title)}</h3>${items.map(compactStockRow).join('') || emptyState(emptyCopy)}</div>`; }
+function shortageGroup(items) { return `<div class="alert-group alert-error"><h3>부족 예정</h3>${items.map(shortageRow).join('') || emptyState('부족 예정이 없습니다.')}</div>`; }
+function compactStockRow(item) {
+  return `<article class="alert-row is-${item.severity}"><div><b>${text(item.ingredient_name)}</b><span>${text(item.current_count)}개 보유</span></div><em>${severityLabels[item.severity]}</em></article>`;
+}
+function shortageRow(item) {
+  return `<article class="alert-row is-error"><div><b>${text(item.ingredient_name)}</b><span>${text(item.needed)}개 필요 / ${text(item.available)}개 보유</span></div><em>${text(item.shortage)}개 부족</em></article>`;
+}
+function stockCard(item) {
+  return `<article class="data-card inventory-card is-${item.severity}"><div><b>${text(item.ingredient_name)}</b><span>${text(item.category || '카테고리 없음')}</span></div><strong>${text(item.current_count)}개</strong><em>${severityLabels[item.severity]}${item.empty_label ? ` · ${text(item.empty_label)}` : ''}</em></article>`;
+}
+function slotCard(slot) {
+  const combo = state.combinations.find((item) => item.id === slot.combination_id);
+  const ingredient = state.ingredients.find((item) => item.id === slot.ingredient_id);
+  return `<article class="data-card meal-card"><b>${text(slot.date)} ${text(slot.meal_type)}</b><span>${text(combo?.name || ingredient?.name || '비어 있음')}</span><em>${label(statusLabels, slot.status)}</em></article>`;
+}
+function ingredientCard(item) {
+  return `<article class="data-card"><b>${text(item.name)}</b><span>${text(item.category || '카테고리 없음')}</span><em>${label(statusLabels, item.status)}</em>${item.status === 'suspected_reaction' ? '<small>진단이 아닌 기록 상태입니다.</small>' : ''}</article>`;
+}
+function comboCard(combo) {
+  const items = state.combinationItems.filter((item) => item.combination_id === combo.id).map((item) => `${text(state.ingredients.find((ingredient) => ingredient.id === item.ingredient_id)?.name || '알 수 없음')} ${text(item.cube_count)}개`).join(', ');
+  return `<article class="data-card"><b>${text(combo.name)}</b><span>${text([combo.stage, combo.texture].filter(Boolean).join(' ') || '조합')}</span><small>${items}</small></article>`;
+}
+function approvalCard(request) {
+  const payload = parseJson(request.payload_json);
+  const rawText = payload?.raw_text ? `요청: ${payload.raw_text}` : request.request_type;
+  return `<article class="data-card record-card"><b>${text(request.request_type)}</b><span>${text(request.status)}</span><small>${text(rawText)}</small></article>`;
+}
+function eventCard(event) {
+  return `<article class="data-card record-card"><b>${label(eventLabels, event.type)}</b><span>${text(event.actor_email)} · ${text(event.source)}</span><small>${text(event.created_at)}</small></article>`;
+}
+function emptyState(copy) { return `<p class="empty">${text(copy)}</p>`; }
+function parseJson(value) { try { return JSON.parse(value); } catch { return null; } }
 function bind() {
   document.querySelector('#reset').onclick = () => { state = seedData(); saveState(); };
   document.querySelector('#weekStart').onchange = render;
-  document.querySelector('#lotForm').onsubmit = (e) => { e.preventDefault(); const fd = new FormData(e.target); addLot(fd.get('ingredient_id'), Number(fd.get('initial_count')), 'manual'); };
-  document.querySelector('#ingredientForm').onsubmit = (e) => { e.preventDefault(); const fd = new FormData(e.target); const ingredient = { id: id('ing'), household_id: 'home', name: fd.get('name'), category: '', status: fd.get('status'), notes: '', created_at: now(), updated_at: now() }; state.ingredients.push(ingredient); logEvent('ingredient_create', ingredient); saveState(); };
+  document.querySelector('#lotForm').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    if (addLot(fd.get('ingredient_id'), Number(fd.get('initial_count')), 'manual')) {
+      saveState();
+      showToast('수동 재고를 추가했습니다.', 'success');
+    }
+  };
+  document.querySelector('#ingredientForm').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const name = String(fd.get('name') || '').trim();
+    if (!name) { showToast('재료명을 입력하세요.', 'warning'); return; }
+    const ingredient = { id: id('ing'), household_id: 'home', name, category: '', status: String(fd.get('status') || 'planned'), notes: '', created_at: now(), updated_at: now() };
+    state.ingredients.push(ingredient);
+    logEvent('ingredient_create', ingredient);
+    e.target.reset();
+    saveState();
+    showToast('재료를 등록했습니다.', 'success');
+  };
   document.querySelector('#aiForm').onsubmit = handleAi;
 }
 function addLot(ingredient_id, quantity, source='manual') {
+  if (!ingredient_id || !Number.isInteger(quantity) || quantity < 1) { showToast('수량을 1개 이상 입력하세요.', 'warning'); return null; }
   const lot = { id: id('lot'), household_id: 'home', ingredient_id, made_at: new Date().toISOString().slice(0,10), expires_at: '', initial_count: quantity, remaining_count: quantity, grams_per_cube: null, storage_location: '', created_at: now(), updated_at: now() };
   state.cubeLots.push(lot);
   const event = logEvent('stock_add', { lot }, null, lot, source);
@@ -66,16 +239,17 @@ function handleAi(e) {
   if (intent.type === 'add_stock') {
     command.dedupe_key = dedupeKey({ household_id: 'home', actor_email: actor(), intent });
     const duplicate = state.aiCommands.find(c => c.dedupe_key === command.dedupe_key && Date.now() - Date.parse(c.created_at) < 60000);
-    if (duplicate) { command.status = 'rejected'; command.validation_result_json = JSON.stringify({ reason: 'duplicate_within_60s' }); state.aiCommands.unshift(command); flash('60초 안에 같은 요청이 이미 처리되었습니다.'); saveState(); return; }
+    if (duplicate) { command.status = 'rejected'; command.validation_result_json = JSON.stringify({ reason: 'duplicate_within_60s' }); state.aiCommands.unshift(command); saveState(); showToast('60초 안에 같은 요청이 이미 처리되었습니다.', 'warning'); return; }
     const event = addLot(intent.ingredient_id, intent.quantity, 'ai');
+    if (!event) return;
     command.status = 'auto_applied'; command.event_id = event.id;
     state.aiCommands.unshift(command); saveState(); showUndo(command, event);
   } else if (intent.type === 'approval') {
     const req = { id: id('apr'), household_id: 'home', actor_email: actor(), request_type: intent.request_type, payload_json: JSON.stringify({ raw_text, intent }), status: 'pending', reviewer_email: null, created_at: now(), reviewed_at: null };
-    state.approvalRequests.unshift(req); command.status = 'pending_approval'; state.aiCommands.unshift(command); flash(intent.reason); saveState();
-  } else { state.aiCommands.unshift(command); flash(intent.reason); saveState(); }
+    state.approvalRequests.unshift(req); command.status = 'pending_approval'; state.aiCommands.unshift(command); saveState(); showToast(intent.reason, 'warning');
+  } else { state.aiCommands.unshift(command); saveState(); showToast(intent.reason, 'warning'); }
 }
-function showUndo(command, event) { flash(`자동 반영됨. <button id="undoAi">3초 undo</button>`); clearTimeout(undoTimer); document.querySelector('#undoAi').onclick = () => rollbackAi(command, event); undoTimer = setTimeout(()=>{ const t=document.querySelector('#toast'); if(t) t.innerHTML=''; }, 3000); }
-function rollbackAi(command, event) { const payload = JSON.parse(event.payload_json); const lot = state.cubeLots.find(l=>l.id===payload.lot.id); if (lot) lot.remaining_count = 0; event.undo_event_id = 'rolled-back'; command.status = 'rolled_back'; logEvent('stock_add_rollback', { original_event_id: event.id }, payload.lot, null, 'ai'); saveState(); flash('rollback 완료'); }
-function flash(html) { const toast = document.querySelector('#toast'); if (toast) toast.innerHTML = html; }
+function showUndo(command, event) { const toast = document.querySelector('#toast'); if (!toast) return; toast.dataset.tone = 'success'; toast.innerHTML = '자동 반영됨. <button id="undoAi" class="button button-link" type="button">3초 안에 취소</button>'; clearTimeout(undoTimer); document.querySelector('#undoAi').onclick = () => rollbackAi(command, event); undoTimer = setTimeout(()=>{ const t=document.querySelector('#toast'); if(t) t.textContent=''; }, 3000); }
+function rollbackAi(command, event) { const payload = JSON.parse(event.payload_json); const lot = state.cubeLots.find(l=>l.id===payload.lot.id); if (lot) lot.remaining_count = 0; event.undo_event_id = 'rolled-back'; command.status = 'rolled_back'; logEvent('stock_add_rollback', { original_event_id: event.id }, payload.lot, null, 'ai'); saveState(); showToast('자동 반영을 취소했습니다.', 'success'); }
+function showToast(message, tone = 'info') { const toast = document.querySelector('#toast'); if (toast) { toast.dataset.tone = tone; toast.textContent = message; } }
 render();
