@@ -1,0 +1,14 @@
+INSERT INTO households VALUES ('home','우리집','2026-07-03T00:00:00.000Z');
+INSERT INTO members VALUES ('home','caregiver-a@example.com','owner','2026-07-03T00:00:00.000Z');
+INSERT INTO members VALUES ('home','caregiver-b@example.com','caregiver','2026-07-03T00:00:00.000Z');
+INSERT INTO child_profiles VALUES ('child-1','home','아기',NULL,'','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO ingredients VALUES ('ing-beef','home','소고기','단백질','tolerated','','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO ingredients VALUES ('ing-broccoli','home','브로콜리','채소','testing','','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO ingredients VALUES ('ing-rice','home','쌀미음','곡류','tolerated','','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO cube_lots VALUES ('lot-beef-1','home','ing-beef','2026-07-01','2026-07-21',5,5,15,'냉동실 A','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO cube_lots VALUES ('lot-broccoli-1','home','ing-broccoli','2026-07-02','2026-07-22',3,3,15,'냉동실 A','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO cube_lots VALUES ('lot-rice-1','home','ing-rice','2026-06-30','2026-07-20',12,12,20,'냉동실 B','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO combinations VALUES ('combo-beef-broccoli','home','소고기 브로콜리 죽','중기','죽','','2026-07-03T00:00:00.000Z','2026-07-03T00:00:00.000Z');
+INSERT INTO combination_items VALUES ('combo-beef-broccoli','ing-beef',1);
+INSERT INTO combination_items VALUES ('combo-beef-broccoli','ing-broccoli',1);
+INSERT INTO combination_items VALUES ('combo-beef-broccoli','ing-rice',2);

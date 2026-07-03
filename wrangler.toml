@@ -1,0 +1,8 @@
+name = "baby-food-cube-management"
+compatibility_date = "2026-07-03"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "baby-food-cube"
+database_id = "replace-with-cloudflare-d1-database-id"
