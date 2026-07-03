@@ -1,1 +1,12 @@
-{"scripts":{"test":"node --test","build":"node scripts/build.mjs"},"devDependencies":{},"dependencies":{},"type":"module"}
+{
+  "scripts": {
+    "test": "node --test",
+    "build": "node scripts/build.mjs",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name baby-food-cube-management"
+  },
+  "devDependencies": {
+    "wrangler": "^4.107.0"
+  },
+  "dependencies": {},
+  "type": "module"
+}
