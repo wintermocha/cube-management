@@ -80,6 +80,59 @@ test('meals tab renders draggable ingredients, combinations, and calendar drop t
   assert.doesNotMatch(mealsHtml, /아침|점심|저녁|data-edit-slot|data-edit-combo/);
 });
 
+test('today tab shows inventory status and meal plan without edit controls', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const weekStart = '2026-07-03';
+  const forecast = calculateForecast({ ingredients, lots: data.cubeLots, combinations: data.combinations, combinationItems: data.combinationItems, mealPlanSlots: data.mealPlanSlots, startDate: weekStart });
+  const forbiddenTodayControls = /data-add-ingredient|data-lot-increment|data-lot-decrement|data-delete-stock|data-delete-lot|data-stock-toggle|data-edit-slot|data-edit-combo|data-meal-drop-date|data-combo-drop-zone|data-drag-combo|data-drag-ingredient|<form\b|<input\b|<select\b|<button\b/;
+  const html = renderAppHtml({
+    activeTab: 'today',
+    state: data,
+    ingredients,
+    inventory,
+    critical: inventory.filter((item) => item.severity === 'error'),
+    warnings: inventory.filter((item) => item.severity === 'warn'),
+    shortages: forecast.filter((item) => item.shortage > 0),
+    nextMealCount: data.mealPlanSlots.length,
+    weekStart,
+    expandedStockId: null,
+    expandedIngredientId: null,
+    todayDate: weekStart,
+    lotFormDefaults: null,
+  });
+  const todayHtml = html.match(/<div id="panel-today"[\s\S]*?(?=<div id="panel-inventory")/)?.[0] ?? '';
+
+  assert.match(todayHtml, /현재 재고/);
+  assert.match(todayHtml, /readonly-inventory-card/);
+  assert.match(todayHtml, /식단표/);
+  assert.match(todayHtml, /meal-calendar-entry/);
+  assert.doesNotMatch(todayHtml, forbiddenTodayControls);
+
+  const emptyState = { ...data, mealPlanSlots: [] };
+  const emptyHtml = renderAppHtml({
+    activeTab: 'today',
+    state: emptyState,
+    ingredients,
+    inventory: [],
+    critical: [],
+    warnings: [],
+    shortages: [],
+    nextMealCount: 0,
+    weekStart,
+    expandedStockId: null,
+    expandedIngredientId: null,
+    todayDate: weekStart,
+    lotFormDefaults: null,
+  });
+  const emptyTodayHtml = emptyHtml.match(/<div id="panel-today"[\s\S]*?(?=<div id="panel-inventory")/)?.[0] ?? '';
+
+  assert.match(emptyTodayHtml, /아직 재고가 없어요/);
+  assert.match(emptyTodayHtml, /비어 있음/);
+  assert.doesNotMatch(emptyTodayHtml, forbiddenTodayControls);
+});
+
 test('AI parser auto-applies only low-risk add stock', () => {
   const data = seedData();
   assert.deepEqual(parseKoreanAddStock('소고기 큐브 6개 만들었어', data.ingredients), { type: 'add_stock', ingredient_id: 'ing-beef', ingredient_name: '소고기', quantity: 6, unit: 'cube' });

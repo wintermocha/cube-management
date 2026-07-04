@@ -39,7 +39,7 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
         ${metricTile('긴급', `${critical.length}건`, critical.length ? '바로 확인 필요' : '현재 없음', critical.length ? 'error' : 'success')}
         ${metricTile('주의', `${warnings.length}건`, warnings.length ? '재고 낮음' : '안정적', warnings.length ? 'warning' : 'success')}${metricTile('부족 예정', `${shortages.length}건`, `${nextMealCount}개 식단 반영`, shortages.length ? 'error' : 'success')}
       </div>
-      ${tabPanel('today', activeTab, todayPanel({ critical, warnings, shortages }))}
+      ${tabPanel('today', activeTab, todayPanel({ inventory, state, weekStart }))}
       ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId, todayDate, lotFormDefaults }))}
       ${tabPanel('items', activeTab, itemsPanel({ ingredients, expandedIngredientId }))}
       ${tabPanel('meals', activeTab, mealsPanel({ state, weekStart, comboBuilderIngredientIds }))}
@@ -48,17 +48,18 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
     </main>`;
 }
 
-function todayPanel({ critical, warnings, shortages }) {
-  return `<section class="section section-tight" aria-labelledby="alertTitle">
+function todayPanel({ inventory, state, weekStart }) {
+  return `<section class="section section-tight" aria-labelledby="todayStockTitle">
     <div class="section-head">
-      <div><p class="eyebrow">큐브별 상태</p><h2 id="alertTitle">바로 볼 재고</h2></div>
-      <p>부족한 품목은 바로 추가할 수 있어요.</p>
+      <div><p class="eyebrow">냉동실</p><h2 id="todayStockTitle">현재 재고</h2></div>
     </div>
-    <div class="alert-grid">
-      ${alertGroup('긴급 재고', critical, '긴급한 재고가 없어요.', 'error')}
-      ${alertGroup('주의 재고', warnings, '주의할 재고가 없어요.', 'warning')}
-      ${shortageGroup(shortages)}
+    <div class="card-grid inventory-grid today-readonly-grid">${inventory.map(readonlyStockCard).join('') || emptyState('아직 재고가 없어요.')}</div>
+  </section>
+  <section class="section" aria-labelledby="todayMealTitle">
+    <div class="section-head">
+      <div><p class="eyebrow">7일 계획</p><h2 id="todayMealTitle">식단표</h2></div>
     </div>
+    ${mealScheduleCalendar(state, weekStart, { readonly: true })}
   </section>`;
 }
 
@@ -143,22 +144,6 @@ function metricTile(labelText, value, detail, tone) {
   return `<article class="metric metric-${tone}"><span>${text(labelText)}</span><strong>${text(value)}</strong><small>${text(detail)}</small></article>`;
 }
 
-function alertGroup(title, items, emptyCopy, tone) {
-  return `<div class="alert-group alert-${tone}"><h3>${text(title)}</h3><div class="cube-box-list">${items.map(compactStockRow).join('') || emptyState(emptyCopy)}</div></div>`;
-}
-
-function shortageGroup(items) {
-  return `<div class="alert-group alert-error"><h3>부족 예정</h3><div class="cube-box-list">${items.map(shortageRow).join('') || emptyState('부족 예정이 없어요.')}</div></div>`;
-}
-
-function compactStockRow(item) {
-  return `<article class="alert-row cube-box is-${item.severity}"><div><b>${text(item.ingredient_name)}</b><span>${text(item.current_count)}개 보유</span></div><button class="button button-small button-secondary" type="button" data-add-ingredient="${text(item.ingredient_id)}" data-add-quantity="1">+1개</button></article>`;
-}
-
-function shortageRow(item) {
-  return `<article class="alert-row cube-box action-row is-error"><div><b>${text(item.ingredient_name)}</b><span>${text(item.needed)}개 필요 / ${text(item.available)}개 보유</span></div><button class="button button-small button-primary" type="button" data-add-ingredient="${text(item.ingredient_id)}" data-add-quantity="${text(item.shortage)}">${text(item.shortage)}개 추가</button></article>`;
-}
-
 function stockCard(item, expandedStockId) {
   const expanded = expandedStockId === item.ingredient_id;
   return `<div class="swipe-shell" data-swipe-delete data-delete-kind="stock" data-delete-id="${text(item.ingredient_id)}">
@@ -171,6 +156,14 @@ function stockCard(item, expandedStockId) {
       ${expanded ? `<div class="stock-detail"><div class="lot-box-list">${item.lots.map(lotRow).join('') || emptyState('등록된 큐브가 없어요.')}</div><div class="stock-description"><b>설명</b>${item.lots.map(lotDescription).join('') || '<p>저장된 설명이 없어요.</p>'}</div></div>` : ''}
     </article>
   </div>`;
+}
+
+function readonlyStockCard(item) {
+  return `<article class="data-card inventory-card readonly-inventory-card is-${item.severity}">
+    <div><b>${text(item.ingredient_name)}</b><span>${text(item.category || '카테고리 없음')}</span></div>
+    <strong>${text(item.current_count)}개</strong>
+    <em>${severityLabels[item.severity]}${item.empty_label ? ` · ${text(item.empty_label)}` : ''}</em>
+  </article>`;
 }
 
 function lotRow(lot) {
