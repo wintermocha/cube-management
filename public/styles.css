@@ -162,9 +162,13 @@ small,
 }
 
 .app-shell {
+  display: flex;
+  flex-direction: column;
   width: min(480px, 100%);
+  height: 100dvh;
   margin: 0 auto;
-  padding: var(--space-5) var(--space-5) calc(var(--space-12) + 80px);
+  overflow: hidden;
+  padding: var(--space-5) var(--space-5) max(var(--space-5), env(safe-area-inset-bottom));
 }
 
 .app-shell-inventory {
@@ -410,14 +414,13 @@ small,
 }
 
 .bottom-tabs {
-  position: fixed;
-  left: 50%;
-  bottom: max(var(--space-4), env(safe-area-inset-bottom));
-  z-index: 6;
-  width: min(860px, calc(100% - 40px));
-  margin: 0;
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  align-self: center;
+  width: min(860px, 100%);
+  margin: var(--space-4) auto 0;
   box-shadow: var(--shadow-elevated);
-  transform: translateX(-50%);
 }
 
 .tab-button {
@@ -469,6 +472,14 @@ small,
 
 .tab-panel[hidden] {
   display: none;
+}
+
+.tab-panel:not([hidden]) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--space-3);
 }
 
 .section-head {
@@ -784,7 +795,7 @@ em {
 
 @media (min-width: 900px) {
   .stock-add-form {
-    grid-template-columns: minmax(160px, .7fr) minmax(360px, 1.8fr) minmax(220px, 1fr) auto;
+    grid-template-columns: minmax(140px, .7fr) minmax(300px, 1.7fr) minmax(190px, 1fr) minmax(64px, auto);
     align-items: end;
   }
 
@@ -1031,6 +1042,187 @@ em {
   width: 100%;
 }
 
+.combo-library,
+.ingredient-palette,
+.builder-selection {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.combo-library {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: var(--space-3);
+}
+
+.combo-box,
+.ingredient-token,
+.selected-token {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-strong);
+}
+
+.combo-box {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 88px;
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-subtle);
+  cursor: grab;
+}
+
+.combo-box:active {
+  cursor: grabbing;
+}
+
+.combo-box b {
+  color: var(--color-ink);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.combo-box span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.combo-builder {
+  display: grid;
+  grid-template-columns: minmax(180px, .75fr) minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.combo-name-field {
+  align-self: end;
+}
+
+.ingredient-palette {
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+}
+
+.ingredient-token,
+.selected-token {
+  min-height: 56px;
+  border-radius: var(--radius-card);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+
+.ingredient-token {
+  display: grid;
+  gap: 2px;
+  cursor: grab;
+}
+
+.ingredient-token b {
+  color: var(--color-ink);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ingredient-token span {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.selected-token {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.combo-drop-zone {
+  min-height: 112px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-raised);
+  padding: var(--space-3);
+}
+
+.combo-drop-zone.has-items {
+  background: var(--color-accent-soft);
+  border-style: solid;
+}
+
+.combo-drop-zone.is-drag-over,
+.meal-day-card.is-drag-over {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.meal-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(156px, 1fr));
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.meal-day-card {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 220px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  padding: var(--space-3);
+}
+
+.meal-day-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.meal-day-head b {
+  color: var(--color-ink);
+}
+
+.meal-day-drop {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-height: 148px;
+}
+
+.meal-calendar-entry {
+  display: grid;
+  gap: 3px;
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: var(--space-2);
+}
+
+.meal-calendar-entry b {
+  color: var(--color-ink);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.meal-calendar-entry span {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.is-dragging {
+  opacity: .55;
+}
+
 .meal-card b,
 .record-card b,
 .data-card b {
@@ -1156,6 +1348,18 @@ em {
 
   .combo-items {
     grid-template-columns: 1fr;
+  }
+
+  .combo-library,
+  .combo-builder,
+  .ingredient-palette {
+    grid-template-columns: 1fr;
+  }
+
+  .meal-calendar {
+    grid-template-columns: repeat(7, minmax(148px, 1fr));
+    margin-inline: calc(var(--space-5) * -1);
+    padding-inline: var(--space-5);
   }
 
   .stock-add-inline-row {

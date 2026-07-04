@@ -1,12 +1,12 @@
 import { activeIngredients } from './domain.js';
-import { mealScheduleTable } from './meal-table-view.js';
+import { mealScheduleCalendar } from './meal-table-view.js';
 
 export const statusLabels = { not_tried: '미시도', planned: '예정', testing: '테스트 중', tolerated: '적응 완료', suspected_reaction: '반응 의심', cancelled: '삭제됨' };
 export const statusOptions = ['not_tried', 'planned', 'testing', 'tolerated', 'suspected_reaction'];
 export const categoryOptions = ['고기', '채소', '과일'];
 
 const severityLabels = { ok: '충분', warn: '주의', error: '긴급' };
-const eventLabels = { stock_add: '재고 추가', stock_increment: '재고 증가', stock_decrement: '재고 차감', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', ingredient_category_update: '카테고리 변경', meal_slot_update: '식단 수정', combo_update: '조합 수정' };
+const eventLabels = { stock_add: '재고 추가', stock_increment: '재고 증가', stock_decrement: '재고 차감', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', ingredient_category_update: '카테고리 변경', meal_slot_update: '식단 수정', meal_slot_create: '식단 추가', combo_update: '조합 수정', combo_create: '조합 추가' };
 const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const workspaceTabs = [{ id: 'today', label: '오늘', detail: '할 일' }, { id: 'inventory', label: '재고', detail: '현재' }, { id: 'items', label: '품목', detail: '관리' }, { id: 'meals', label: '식단', detail: '계획' }, { id: 'records', label: '기록', detail: '변경' }];
 const workspaceCopy = {
@@ -25,7 +25,7 @@ export function label(map, value) {
   return map[value] || text(value);
 }
 
-export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate, lotFormDefaults }) {
+export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate, lotFormDefaults, comboBuilderIngredientIds = [] }) {
   const currentCopy = workspaceCopy[activeTab] || workspaceCopy.today;
   return `
     <main id="main" class="app-shell app-shell-${text(activeTab)}">
@@ -42,7 +42,7 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
       ${tabPanel('today', activeTab, todayPanel({ critical, warnings, shortages }))}
       ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId, todayDate, lotFormDefaults }))}
       ${tabPanel('items', activeTab, itemsPanel({ ingredients, expandedIngredientId }))}
-      ${tabPanel('meals', activeTab, mealsPanel({ state, weekStart }))}
+      ${tabPanel('meals', activeTab, mealsPanel({ state, weekStart, comboBuilderIngredientIds }))}
       ${tabPanel('records', activeTab, recordsPanel({ state }))}
       <nav class="workspace-tabs bottom-tabs" role="tablist" aria-label="기능 분류">${workspaceTabs.map((tab) => tabButton(tab, activeTab)).join('')}</nav>
     </main>`;
@@ -104,21 +104,20 @@ function itemsPanel({ ingredients, expandedIngredientId }) {
   </section>`;
 }
 
-function mealsPanel({ state, weekStart }) {
+function mealsPanel({ state, weekStart, comboBuilderIngredientIds }) {
   return `<section class="section section-tight" aria-labelledby="mealTitle">
     <div class="section-head section-head-inline">
       <div><p class="eyebrow">7일 계획</p><h2 id="mealTitle">식단표</h2></div>
       <label class="date-control">시작일 <input id="weekStart" value="${text(weekStart)}" type="date"></label>
     </div>
-    ${mealScheduleTable(state, weekStart)}
-    <h3 class="subsection-title">식단표 수정</h3>
-    <div class="card-grid meal-grid">${state.mealPlanSlots.map((slot) => slotCard(slot, state)).join('')}</div>
+    <div class="combo-library">${state.combinations.map((combo) => comboCard(combo, state)).join('') || emptyState('저장된 조합이 없어요.')}</div>
+    ${mealScheduleCalendar(state, weekStart)}
   </section>
   <section class="section" aria-labelledby="comboTitle">
     <div class="section-head">
       <div><p class="eyebrow">레시피</p><h2 id="comboTitle">조합</h2></div>
     </div>
-    <div class="card-grid compact-grid">${state.combinations.map((combo) => comboCard(combo, state)).join('')}</div>
+    ${comboBuilder(state, comboBuilderIngredientIds)}
   </section>`;
 }
 
@@ -190,22 +189,6 @@ function lotDescription(lot) {
   return `<p><span>${text(lot.made_at || '날짜 없음')}</span>${text(lot.description || '설명 없음')}</p>`;
 }
 
-function slotCard(slot, state) {
-  const combo = state.combinations.find((item) => item.id === slot.combination_id);
-  const ingredient = state.ingredients.find((item) => item.id === slot.ingredient_id);
-  return `<form class="data-card meal-card edit-card" data-edit-slot="${text(slot.id)}">
-    <b>${text(slot.date)} ${text(slot.meal_type)}</b>
-    <label class="field"><span>날짜</span><input name="date" type="date" value="${text(slot.date)}"></label>
-    <label class="field"><span>끼니</span><select name="meal_type">${['아침','점심','저녁'].map((type) => `<option value="${text(type)}"${slot.meal_type === type ? ' selected' : ''}>${text(type)}</option>`).join('')}</select></label>
-    <label class="field"><span>종류</span><select name="target_type">${['combination','ingredient'].map((type) => `<option value="${type}"${slot.target_type === type ? ' selected' : ''}>${type === 'combination' ? '조합' : '단일 품목'}</option>`).join('')}</select></label>
-    <label class="field"><span>조합</span><select name="combination_id"><option value="">선택 없음</option>${state.combinations.map((item) => `<option value="${text(item.id)}"${slot.combination_id === item.id ? ' selected' : ''}>${text(item.name)}</option>`).join('')}</select></label>
-    <label class="field"><span>품목</span><select name="ingredient_id"><option value="">선택 없음</option>${activeIngredients(state.ingredients).map((item) => `<option value="${text(item.id)}"${slot.ingredient_id === item.id ? ' selected' : ''}>${text(item.name)}</option>`).join('')}</select></label>
-    <label class="field"><span>수량</span><input name="cube_count" type="number" min="1" max="20" value="${text(slot.cube_count || 1)}"></label>
-    <label class="field"><span>상태</span><select name="status">${['planned','testing','tolerated','cancelled'].map((status) => `<option value="${status}"${slot.status === status ? ' selected' : ''}>${label(statusLabels, status)}</option>`).join('')}</select></label>
-    <small>현재: ${text(combo?.name || ingredient?.name || '비어 있어요')} · ${label(statusLabels, slot.status)}</small>
-  </form>`;
-}
-
 function ingredientCard(item, expandedIngredientId) {
   const expanded = expandedIngredientId === item.id;
   return `<div class="swipe-shell" data-swipe-delete data-delete-kind="ingredient" data-delete-id="${text(item.id)}">
@@ -225,18 +208,32 @@ function ingredientCard(item, expandedIngredientId) {
 
 function comboCard(combo, state) {
   const comboItems = state.combinationItems.filter((item) => item.combination_id === combo.id);
-  const itemSummary = comboItems.map((item) => `${text(state.ingredients.find((ingredient) => ingredient.id === item.ingredient_id)?.name || '알 수 없음')} ${text(item.cube_count)}개`).join(', ');
-  return `<form class="data-card combo-card edit-card" data-edit-combo="${text(combo.id)}">
-    <label class="field"><span>조합명</span><input name="name" value="${text(combo.name)}"></label>
-    <label class="field"><span>단계</span><input name="stage" value="${text(combo.stage || '')}" placeholder="예: 중기"></label>
-    <label class="field"><span>질감</span><input name="texture" value="${text(combo.texture || '')}" placeholder="예: 죽"></label>
-    <div class="combo-items">${activeIngredients(state.ingredients).map((ingredient) => {
-      const found = comboItems.find((item) => item.ingredient_id === ingredient.id);
-      return `<label class="field"><span>${text(ingredient.name)}</span><input name="cube_${text(ingredient.id)}" type="number" min="0" max="20" value="${text(found?.cube_count || 0)}"></label>`;
-    }).join('')}</div>
-    <small>${itemSummary || '구성 품목 없음'}</small>
-    <button class="button button-secondary" type="submit">조합 저장</button>
+  const itemSummary = comboItems.map((item) => `${text(state.ingredients.find((ingredient) => ingredient.id === item.ingredient_id)?.name || '알 수 없음')} ${text(item.cube_count)}개`).join(' · ');
+  return `<article class="combo-box" draggable="true" data-drag-combo="${text(combo.id)}">
+    <b>${text(combo.name)}</b>
+    <span>${itemSummary || '구성 품목 없음'}</span>
+  </article>`;
+}
+
+function comboBuilder(state, selectedIds) {
+  const ingredients = activeIngredients(state.ingredients);
+  const selected = selectedIds.map((ingredientId) => ingredients.find((item) => item.id === ingredientId)).filter(Boolean);
+  return `<form id="comboBuilderForm" class="combo-builder">
+    <label class="field combo-name-field"><span>조합명</span><input name="name" autocomplete="off" placeholder="예: 소고기 브로콜리 죽"></label>
+    <div class="ingredient-palette">${ingredients.map((ingredient) => ingredientToken(ingredient)).join('') || emptyState('등록된 품목이 없어요.')}</div>
+    <div class="combo-drop-zone${selected.length ? ' has-items' : ''}" data-combo-drop-zone>
+      <div class="builder-selection">${selected.map(selectedIngredientToken).join('') || '<span class="meal-slot-empty">품목을 여기에 넣어요</span>'}</div>
+    </div>
+    <button class="button button-primary" type="submit">저장</button>
   </form>`;
+}
+
+function ingredientToken(ingredient) {
+  return `<button class="ingredient-token" type="button" draggable="true" data-drag-ingredient="${text(ingredient.id)}"><b>${text(ingredient.name)}</b><span>${text(ingredient.category || '카테고리 없음')}</span></button>`;
+}
+
+function selectedIngredientToken(ingredient) {
+  return `<button class="selected-token" type="button" data-builder-remove="${text(ingredient.id)}">${text(ingredient.name)}</button>`;
 }
 
 function eventCard(event) {

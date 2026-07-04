@@ -1,18 +1,14 @@
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
-const mealTypes = ['아침', '점심', '저녁'];
 const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 function text(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => escapeMap[char]);
 }
 
-export function mealScheduleTable(state, weekStart) {
+export function mealScheduleCalendar(state, weekStart, { readonly = false } = {}) {
   const days = Array.from({ length: 7 }, (_, index) => makeDay(weekStart, index));
-  return `<div class="meal-table-scroll" aria-label="식단표 보기">
-    <table class="meal-plan-table">
-      <thead><tr><th scope="col">끼니</th>${days.map(dayHead).join('')}</tr></thead>
-      <tbody>${mealTypes.map((mealType) => mealRow(mealType, days, state)).join('')}${newFoodRow(days, state)}</tbody>
-    </table>
+  return `<div class="meal-calendar" aria-label="식단 달력">
+    ${days.map((day) => dayCard(day, state, readonly)).join('')}
   </div>`;
 }
 
@@ -23,17 +19,14 @@ function makeDay(weekStart, offset) {
   return { key, date, label: `${date.getUTCMonth() + 1}/${date.getUTCDate()}`, weekday: weekdays[date.getUTCDay()] };
 }
 
-function dayHead(day) {
-  return `<th scope="col"><b>${text(day.weekday)}</b><span>${text(day.label)}</span></th>`;
-}
-
-function mealRow(mealType, days, state) {
-  return `<tr><th scope="row">${text(mealType)}</th>${days.map((day) => `<td>${slotList(day.key, mealType, state)}</td>`).join('')}</tr>`;
-}
-
-function slotList(date, mealType, state) {
-  const slots = state.mealPlanSlots.filter((slot) => slot.date === date && slot.meal_type === mealType && slot.status !== 'cancelled');
-  return `<div class="meal-slot-list">${slots.map((slot) => slotSummary(slot, state)).join('') || '<span class="meal-slot-empty">-</span>'}</div>`;
+function dayCard(day, state, readonly) {
+  const slots = state.mealPlanSlots
+    .filter((slot) => slot.date === day.key && slot.status !== 'cancelled')
+    .sort((a, b) => String(a.created_at || a.id).localeCompare(String(b.created_at || b.id)));
+  return `<article class="meal-day-card"${readonly ? '' : ` data-meal-drop-date="${text(day.key)}"`}>
+    <div class="meal-day-head"><b>${text(day.weekday)}</b><span>${text(day.label)}</span></div>
+    <div class="meal-day-drop">${slots.map((slot) => slotSummary(slot, state)).join('') || '<span class="meal-slot-empty">비어 있음</span>'}</div>
+  </article>`;
 }
 
 function slotSummary(slot, state) {
@@ -45,17 +38,5 @@ function slotSummary(slot, state) {
     const name = state.ingredients.find((ingredientItem) => ingredientItem.id === item.ingredient_id)?.name || '알 수 없음';
     return `<span>${text(name)} ${text(Number(item.cube_count || 0) * multiplier)}개</span>`;
   }).join('');
-  return `<div class="meal-table-entry"><b>${text(combo?.name || ingredient?.name || '비어 있음')}</b>${itemRows || `<span>${text(slot.cube_count || 1)}개</span>`}</div>`;
-}
-
-function newFoodRow(days, state) {
-  return `<tr class="meal-new-row"><th scope="row">New</th>${days.map((day) => `<td>${newFoodList(day.key, state)}</td>`).join('')}</tr>`;
-}
-
-function newFoodList(date, state) {
-  const names = state.mealPlanSlots
-    .filter((slot) => slot.date === date && ['planned', 'testing'].includes(slot.status))
-    .map((slot) => state.ingredients.find((item) => item.id === slot.ingredient_id)?.name || state.combinations.find((item) => item.id === slot.combination_id)?.name)
-    .filter(Boolean);
-  return names.length ? `<span class="meal-new-text">${names.map(text).join(', ')}</span>` : '<span class="meal-slot-empty">-</span>';
+  return `<div class="meal-calendar-entry"><b>${text(combo?.name || ingredient?.name || '비어 있음')}</b>${itemRows || `<span>${text(slot.cube_count || 1)}개</span>`}</div>`;
 }

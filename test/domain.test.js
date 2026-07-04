@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seedData } from '../src/lib/seed.js';
 import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from '../src/lib/domain.js';
-import { mealScheduleTable } from '../src/lib/meal-table-view.js';
+import { mealScheduleCalendar } from '../src/lib/meal-table-view.js';
+import { renderAppHtml } from '../src/lib/view.js';
 
 test('current stock severity follows PRD thresholds', () => {
   assert.equal(stockSeverity(4), 'ok');
@@ -38,12 +39,45 @@ test('forecast multiplies combination needs by meal slot count', () => {
   assert.equal(forecast.find((item) => item.ingredient_id === 'ing-rice').needed, 4);
 });
 
-test('meal table displays multiplied combination item counts', () => {
+test('meal calendar exposes drop dates without meal-type rows', () => {
   const data = seedData();
   data.mealPlanSlots = [{ id: 'slot-double', date: '2026-07-03', meal_type: '점심', target_type: 'combination', combination_id: 'combo-beef-broccoli', cube_count: 2, status: 'planned' }];
-  const html = mealScheduleTable(data, '2026-07-03');
+  const html = mealScheduleCalendar(data, '2026-07-03');
+
+  assert.doesNotMatch(html, /아침|점심|저녁/);
+  assert.match(html, /data-meal-drop-date="2026-07-03"/);
   assert.match(html, /소고기 2개/);
   assert.match(html, /쌀미음 4개/);
+});
+
+test('meals tab renders draggable ingredients, combinations, and calendar drop targets', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const weekStart = '2026-07-03';
+  const forecast = calculateForecast({ ingredients, lots: data.cubeLots, combinations: data.combinations, combinationItems: data.combinationItems, mealPlanSlots: data.mealPlanSlots, startDate: weekStart });
+  const html = renderAppHtml({
+    activeTab: 'meals',
+    state: data,
+    ingredients,
+    inventory,
+    critical: inventory.filter((item) => item.severity === 'error'),
+    warnings: inventory.filter((item) => item.severity === 'warn'),
+    shortages: forecast.filter((item) => item.shortage > 0),
+    nextMealCount: data.mealPlanSlots.length,
+    weekStart,
+    expandedStockId: null,
+    expandedIngredientId: null,
+    todayDate: weekStart,
+    lotFormDefaults: null,
+  });
+  const mealsHtml = html.match(/<div id="panel-meals"[\s\S]*?<\/div>\s*<div id="panel-records"/)?.[0] ?? '';
+
+  assert.match(mealsHtml, /data-drag-ingredient="ing-beef"/);
+  assert.match(mealsHtml, /data-drag-combo="combo-beef-broccoli"/);
+  assert.match(mealsHtml, /data-combo-drop-zone/);
+  assert.match(mealsHtml, /data-meal-drop-date="2026-07-03"/);
+  assert.doesNotMatch(mealsHtml, /아침|점심|저녁|data-edit-slot|data-edit-combo/);
 });
 
 test('AI parser auto-applies only low-risk add stock', () => {

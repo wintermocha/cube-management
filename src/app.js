@@ -1,5 +1,5 @@
 import { seedData } from './lib/seed.js';
-import { activeIngredients, summarizeInventory, calculateForecast, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from './lib/domain.js';
+import { DEFAULT_MEAL_TYPE, activeIngredients, summarizeInventory, calculateForecast, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from './lib/domain.js';
 import { wireAppEvents } from './lib/bindings.js';
 import { categoryOptions, label, renderAppHtml, statusLabels, statusOptions } from './lib/view.js';
 import { createSharedStateSync } from './lib/api-state.js';
@@ -10,6 +10,7 @@ let state = loadState();
 let activeTab = loadActiveTab();
 let pendingIngredientDeleteId = null, pendingLotDeleteId = null, expandedStockId = null, expandedIngredientId = null;
 let lotFormDefaults = null;
+let comboBuilderIngredientIds = [];
 const sharedState = createSharedStateSync({ getState: () => state, setState: (next) => { state = next; }, cacheKey: STORAGE_KEY, render, warn: (message) => showToast(message, 'warning') });
 
 function loadState() { const saved = localStorage.getItem(STORAGE_KEY); try { return saved ? JSON.parse(saved) : seedData(); } catch { localStorage.removeItem(STORAGE_KEY); return seedData(); } }
@@ -34,7 +35,7 @@ function render() {
   const warnings = inventory.filter((item) => item.severity === 'warn');
   const shortages = forecast.filter((item) => item.shortage > 0);
   const nextMealCount = state.mealPlanSlots.filter((slot) => slot.status !== 'cancelled').length;
-  document.querySelector('#app').innerHTML = renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate: localDate(), lotFormDefaults });
+  document.querySelector('#app').innerHTML = renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate: localDate(), lotFormDefaults, comboBuilderIngredientIds });
   wireAppEvents({
     onTabChange: handleTabChange,
     onWeekChange: render,
@@ -47,8 +48,10 @@ function render() {
     onLotDelete: handleLotDelete,
     onIngredientStatusChange: handleIngredientStatusChange,
     onIngredientCategoryChange: handleIngredientCategoryChange,
-    onSlotChange: handleSlotChange,
-    onComboSubmit: handleComboSubmit,
+    onComboIngredientDrop: handleComboIngredientDrop,
+    onComboBuilderRemove: handleComboBuilderRemove,
+    onComboBuilderSubmit: handleComboBuilderSubmit,
+    onMealComboDrop: handleMealComboDrop,
     onStockToggle: toggleStockDescription,
     onIngredientToggle: toggleIngredientCard,
   });
@@ -193,60 +196,45 @@ function toggleIngredientCard(ingredientId) {
   expandedIngredientId = expandedIngredientId === ingredientId ? null : ingredientId;
   pendingIngredientDeleteId = null; pendingLotDeleteId = null; render();
 }
-function handleSlotChange(form) {
-  const fd = new FormData(form);
-  const slotId = form.dataset.editSlot;
-  const before = state.mealPlanSlots.find((slot) => slot.id === slotId);
-  if (!before) { showToast('식단을 찾지 못했어요.', 'warning'); return; }
-  const targetType = String(fd.get('target_type') || 'combination');
-  const combinationId = String(fd.get('combination_id') || '');
-  const ingredientId = String(fd.get('ingredient_id') || '');
-  const cubeCount = Number(fd.get('cube_count') || 1);
-  if (!Number.isInteger(cubeCount) || cubeCount < 1 || cubeCount > 20) { showToast('식단 수량은 1~20개로 입력해 주세요.', 'warning'); return; }
-  if (targetType === 'combination' && !combinationId) { showToast('조합을 선택해 주세요.', 'warning'); return; }
-  if (targetType === 'ingredient' && !ingredientId) { showToast('품목을 선택해 주세요.', 'warning'); return; }
-  state.mealPlanSlots = state.mealPlanSlots.map((slot) => {
-    if (slot.id !== slotId) return slot;
-    return {
-      ...slot,
-      date: String(fd.get('date') || slot.date),
-      meal_type: String(fd.get('meal_type') || slot.meal_type),
-      target_type: targetType,
-      combination_id: targetType === 'combination' ? combinationId : null,
-      ingredient_id: targetType === 'ingredient' ? ingredientId : null,
-      cube_count: cubeCount,
-      status: String(fd.get('status') || slot.status),
-      updated_at: now(),
-    };
-  });
-  const after = state.mealPlanSlots.find((slot) => slot.id === slotId);
-  logEvent('meal_slot_update', { slot_id: slotId }, before, after, 'manual');
-  saveState();
-  showToast('식단표를 수정했어요.', 'success');
+function handleComboIngredientDrop(ingredientId) {
+  const ingredient = activeIngredients(state.ingredients).find((item) => item.id === ingredientId);
+  if (!ingredient) { showToast('품목을 찾지 못했어요.', 'warning'); return; }
+  if (comboBuilderIngredientIds.includes(ingredientId)) { showToast('이미 조합에 들어간 품목이에요.', 'warning'); return; }
+  comboBuilderIngredientIds = comboBuilderIngredientIds.concat(ingredientId);
+  render();
 }
-function handleComboSubmit(form) {
+function handleComboBuilderRemove(ingredientId) {
+  comboBuilderIngredientIds = comboBuilderIngredientIds.filter((idValue) => idValue !== ingredientId);
+  render();
+}
+function handleComboBuilderSubmit(form) {
+  const selectedIngredients = comboBuilderIngredientIds.map((ingredientId) => activeIngredients(state.ingredients).find((item) => item.id === ingredientId)).filter(Boolean);
+  if (!selectedIngredients.length) { showToast('조합에 넣을 품목을 선택해 주세요.', 'warning'); return; }
   const fd = new FormData(form);
-  const comboId = form.dataset.editCombo;
-  const before = {
-    combo: state.combinations.find((combo) => combo.id === comboId),
-    items: state.combinationItems.filter((item) => item.combination_id === comboId),
-  };
-  if (!before.combo) { showToast('조합을 찾지 못했어요.', 'warning'); return; }
-  const name = String(fd.get('name') || '').trim();
+  const generatedName = selectedIngredients.map((ingredient) => ingredient.name).join(' ');
+  const name = String(fd.get('name') || generatedName).trim();
   if (!name) { showToast('조합명을 입력해 주세요.', 'warning'); return; }
-  const nextItems = [];
-  for (const ingredient of activeIngredients(state.ingredients)) {
-    const count = Number(fd.get(`cube_${ingredient.id}`) || 0);
-    if (!Number.isInteger(count) || count < 0 || count > 20) { showToast('조합 수량은 0~20개로 입력해 주세요.', 'warning'); return; }
-    if (count > 0) nextItems.push({ combination_id: comboId, ingredient_id: ingredient.id, cube_count: count });
-  }
-  if (!nextItems.length) { showToast('조합에는 품목이 1개 이상 필요해요.', 'warning'); return; }
-  state.combinations = state.combinations.map((combo) => combo.id === comboId ? { ...combo, name, stage: String(fd.get('stage') || '').trim(), texture: String(fd.get('texture') || '').trim(), updated_at: now() } : combo);
-  state.combinationItems = state.combinationItems.filter((item) => item.combination_id !== comboId).concat(nextItems);
-  const after = { combo: state.combinations.find((combo) => combo.id === comboId), items: nextItems };
-  logEvent('combo_update', { combination_id: comboId }, before, after, 'manual');
+  const timestamp = now();
+  const combination = { id: id('combo'), household_id: 'home', name, stage: '', texture: '', notes: '', created_at: timestamp, updated_at: timestamp };
+  const items = selectedIngredients.map((ingredient) => ({ combination_id: combination.id, ingredient_id: ingredient.id, cube_count: 1 }));
+  const before = { combinations: state.combinations, combinationItems: state.combinationItems };
+  state = { ...state, combinations: state.combinations.concat(combination), combinationItems: state.combinationItems.concat(items) };
+  comboBuilderIngredientIds = [];
+  logEvent('combo_create', { combination_id: combination.id, name }, before, { combination, items }, 'manual');
   saveState();
-  showToast('조합을 수정했어요.', 'success');
+  showToast('조합을 저장했어요.', 'success');
+}
+function handleMealComboDrop(comboId, date) {
+  const combination = state.combinations.find((combo) => combo.id === comboId);
+  if (!combination) { showToast('조합을 찾지 못했어요.', 'warning'); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) { showToast('날짜를 찾지 못했어요.', 'warning'); return; }
+  const timestamp = now();
+  const slot = { id: id('slot'), household_id: 'home', date, meal_type: DEFAULT_MEAL_TYPE, target_type: 'combination', combination_id: comboId, ingredient_id: null, cube_count: 1, status: 'planned', created_at: timestamp, updated_at: timestamp };
+  const beforeSlots = state.mealPlanSlots;
+  state = { ...state, mealPlanSlots: state.mealPlanSlots.concat(slot) };
+  logEvent('meal_slot_create', { slot_id: slot.id, combination_id: comboId, date }, beforeSlots, state.mealPlanSlots, 'manual');
+  saveState();
+  showToast(`${date}에 ${combination.name} 조합을 넣었어요.`, 'success');
 }
 function parseOptionalPositiveNumber(value) {
   const raw = String(value ?? '').trim();

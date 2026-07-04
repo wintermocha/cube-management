@@ -32,11 +32,13 @@ export function wireAppEvents(handlers) {
     select.onpointerdown = (event) => event.stopPropagation();
     select.onchange = (event) => { event.stopPropagation(); handlers.onIngredientCategoryChange(select.dataset.ingredientCategory, select.value); };
   });
-  document.querySelectorAll('[data-edit-slot]').forEach((form) => {
-    form.onchange = () => handlers.onSlotChange(form);
-  });
-  document.querySelectorAll('[data-edit-combo]').forEach((form) => {
-    form.onsubmit = (event) => { event.preventDefault(); handlers.onComboSubmit(form); };
+  document.querySelector('#comboBuilderForm')?.addEventListener('submit', (event) => { event.preventDefault(); handlers.onComboBuilderSubmit(event.currentTarget); });
+  document.querySelectorAll('[data-drag-ingredient]').forEach((element) => setupDragSource(element, { type: 'ingredient', id: element.dataset.dragIngredient }));
+  document.querySelectorAll('[data-drag-combo]').forEach((element) => setupDragSource(element, { type: 'combination', id: element.dataset.dragCombo }));
+  document.querySelectorAll('[data-combo-drop-zone]').forEach((zone) => setupDropZone(zone, 'ingredient', (payload) => handlers.onComboIngredientDrop(payload.id)));
+  document.querySelectorAll('[data-meal-drop-date]').forEach((zone) => setupDropZone(zone, 'combination', (payload) => handlers.onMealComboDrop(payload.id, zone.dataset.mealDropDate)));
+  document.querySelectorAll('[data-builder-remove]').forEach((button) => {
+    button.onclick = () => handlers.onComboBuilderRemove(button.dataset.builderRemove);
   });
   document.querySelectorAll('[data-stock-toggle]').forEach((button) => {
     button.onclick = (event) => { event.stopPropagation(); handlers.onStockToggle(button.dataset.stockToggle); };
@@ -44,6 +46,45 @@ export function wireAppEvents(handlers) {
   document.querySelectorAll('[data-ingredient-toggle]').forEach((button) => {
     button.onclick = (event) => { event.stopPropagation(); handlers.onIngredientToggle(button.dataset.ingredientToggle); };
   });
+}
+
+function setupDragSource(element, payload) {
+  element.ondragstart = (event) => {
+    const value = JSON.stringify(payload);
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('application/json', value);
+    event.dataTransfer.setData('text/plain', value);
+    element.classList.add('is-dragging');
+  };
+  element.ondragend = () => {
+    element.classList.remove('is-dragging');
+  };
+}
+
+function setupDropZone(zone, expectedType, onDrop) {
+  zone.ondragover = (event) => {
+    event.preventDefault();
+    zone.classList.add('is-drag-over');
+  };
+  zone.ondragleave = () => {
+    zone.classList.remove('is-drag-over');
+  };
+  zone.ondrop = (event) => {
+    const payload = dragPayload(event);
+    zone.classList.remove('is-drag-over');
+    if (payload?.type !== expectedType || !payload.id) return;
+    event.preventDefault();
+    onDrop(payload);
+  };
+}
+
+function dragPayload(event) {
+  try {
+    const raw = event.dataTransfer?.getData('application/json') || event.dataTransfer?.getData('text/plain') || '';
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 function setupSwipeDelete(shell) {

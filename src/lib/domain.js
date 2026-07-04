@@ -1,5 +1,6 @@
 export const STATUSES = ['not_tried','planned','testing','tolerated','suspected_reaction'];
 export const MEAL_TYPES = ['아침','점심','저녁'];
+export const DEFAULT_MEAL_TYPE = '점심';
 export const APPROVAL_ALLOWLIST = ['add_stock_after_review','stock_decrement','cube_lot_delete','single_meal_slot_change','week_meal_plan_change','ingredient_status_note'];
 
 export function stockSeverity(count) {
