@@ -15,6 +15,8 @@ export async function onRequest(context) {
     const path = url.pathname.replace(/^\/api/, '') || '/';
     const householdId = member.household_id;
 
+    if (request.method === 'GET' && path === '/state') return json(await readState(env.DB, householdId));
+    if (request.method === 'PUT' && path === '/state') return handlePutState(env.DB, householdId, await readJson(request));
     if (request.method === 'GET' && path === '/child-profile') return json(await env.DB.prepare('SELECT id,display_name,birth_date,notes FROM child_profiles WHERE household_id=?').bind(householdId).first());
     if (request.method === 'PATCH' && path === '/child-profile') {
       const body = await request.json();
@@ -51,10 +53,97 @@ export async function onRequest(context) {
   }
 }
 
-function getActorEmail(request) {
-  return request.headers.get('cf-access-authenticated-user-email') || request.headers.get('x-authenticated-user-email');
+export function getActorEmail(request) {
+  const accessEmail = request.headers.get('cf-access-authenticated-user-email');
+  if (accessEmail) return accessEmail;
+  const host = new URL(request.url).hostname;
+  if (host === '127.0.0.1' || host === 'localhost') return request.headers.get('x-authenticated-user-email');
+  return null;
+}
+async function readJson(request) {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
 }
 async function all(db, sql, ...binds) { return (await db.prepare(sql).bind(...binds).all()).results || []; }
+async function readState(db, householdId) {
+  const version = await stateVersion(db, householdId);
+  return {
+    syncVersion: version,
+    household: await db.prepare('SELECT * FROM households WHERE id=?').bind(householdId).first(),
+    members: await all(db, 'SELECT * FROM members WHERE household_id=? ORDER BY email', householdId),
+    childProfile: await db.prepare('SELECT * FROM child_profiles WHERE household_id=?').bind(householdId).first(),
+    ingredients: await all(db, 'SELECT * FROM ingredients WHERE household_id=? ORDER BY created_at,name', householdId),
+    cubeLots: (await all(db, 'SELECT * FROM cube_lots WHERE household_id=? ORDER BY created_at,id', householdId)).map((lot) => ({ ...lot, description: lot.storage_location || '' })),
+    combinations: await all(db, 'SELECT * FROM combinations WHERE household_id=? ORDER BY created_at,name', householdId),
+    combinationItems: await all(db, 'SELECT ci.* FROM combination_items ci JOIN combinations c ON c.id=ci.combination_id WHERE c.household_id=? ORDER BY ci.combination_id,ci.ingredient_id', householdId),
+    mealPlanSlots: await all(db, 'SELECT * FROM meal_plan_slots WHERE household_id=? ORDER BY date,meal_type,id', householdId),
+    events: await all(db, 'SELECT * FROM events WHERE household_id=? ORDER BY created_at DESC', householdId),
+    aiCommands: await all(db, 'SELECT * FROM ai_commands WHERE household_id=? ORDER BY created_at DESC', householdId),
+    approvalRequests: await all(db, 'SELECT * FROM approval_requests WHERE household_id=? ORDER BY created_at DESC', householdId),
+  };
+}
+async function handlePutState(db, householdId, body) {
+  const parsed = normalizeStateForD1(body, householdId);
+  if (!parsed.ok) return json({ error: 'validation_failed' }, 422);
+  const currentVersion = await stateVersion(db, householdId);
+  if (parsed.syncVersion !== currentVersion) return json({ error: 'version_conflict', state: await readState(db, householdId) }, 409);
+  await db.batch(buildReplaceStateStatements(db, householdId, parsed.state, currentVersion + 1));
+  return json(await readState(db, householdId));
+}
+export function normalizeStateForD1(body, householdId) {
+  if (!isObject(body)) return { ok: false };
+  const syncVersion = Number(body.syncVersion);
+  if (!Number.isInteger(syncVersion) || syncVersion < 1) return { ok: false };
+  const names = ['ingredients','cubeLots','combinations','combinationItems','mealPlanSlots','events'];
+  if (!names.every((name) => Array.isArray(body[name]))) return { ok: false };
+  const state = {
+    ingredients: rows(body.ingredients.filter((row) => !row.deleted_at && row.status !== 'cancelled'), ['id','name','category','status','notes','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
+    cubeLots: rows(body.cubeLots.filter((row) => !row.deleted_at), ['id','ingredient_id','made_at','expires_at','initial_count','remaining_count','grams_per_cube','storage_location','description','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId, storage_location: row.description || row.storage_location || null })),
+    combinations: rows(body.combinations, ['id','name','stage','texture','notes','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
+    combinationItems: rows(body.combinationItems, ['combination_id','ingredient_id','cube_count']),
+    mealPlanSlots: rows(body.mealPlanSlots, ['id','date','meal_type','target_type','combination_id','ingredient_id','cube_count','status','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
+    events: rows(body.events, ['id','actor_email','source','type','payload_json','before_json','after_json','created_at','undo_event_id']).map((row) => ({ ...row, household_id: householdId })),
+  };
+  if (!state.ingredients.length || !state.combinations.length) return { ok: false };
+  if (state.ingredients.some((row) => !row.id || !row.name || !['not_tried','planned','testing','tolerated','suspected_reaction'].includes(row.status))) return { ok: false };
+  return { ok: true, syncVersion, state };
+}
+function buildReplaceStateStatements(db, householdId, state, nextVersion) {
+  const statements = [
+    db.prepare('DELETE FROM meal_plan_slots WHERE household_id=?').bind(householdId),
+    db.prepare('DELETE FROM combination_items WHERE combination_id IN (SELECT id FROM combinations WHERE household_id=?)').bind(householdId),
+    db.prepare('DELETE FROM combinations WHERE household_id=?').bind(householdId),
+    db.prepare('DELETE FROM cube_lots WHERE household_id=?').bind(householdId),
+    db.prepare('DELETE FROM ingredients WHERE household_id=?').bind(householdId),
+  ];
+  pushRows(statements, db, 'INSERT INTO ingredients VALUES (?,?,?,?,?,?,?,?)', state.ingredients, ['id','household_id','name','category','status','notes','created_at','updated_at']);
+  pushRows(statements, db, 'INSERT INTO cube_lots VALUES (?,?,?,?,?,?,?,?,?,?,?)', state.cubeLots, ['id','household_id','ingredient_id','made_at','expires_at','initial_count','remaining_count','grams_per_cube','storage_location','created_at','updated_at']);
+  pushRows(statements, db, 'INSERT INTO combinations VALUES (?,?,?,?,?,?,?,?)', state.combinations, ['id','household_id','name','stage','texture','notes','created_at','updated_at']);
+  pushRows(statements, db, 'INSERT INTO combination_items VALUES (?,?,?)', state.combinationItems, ['combination_id','ingredient_id','cube_count']);
+  pushRows(statements, db, 'INSERT INTO meal_plan_slots VALUES (?,?,?,?,?,?,?,?,?,?,?)', state.mealPlanSlots, ['id','household_id','date','meal_type','target_type','combination_id','ingredient_id','cube_count','status','created_at','updated_at']);
+  pushRows(statements, db, 'INSERT OR IGNORE INTO events VALUES (?,?,?,?,?,?,?,?,?,?)', state.events, ['id','household_id','actor_email','source','type','payload_json','before_json','after_json','created_at','undo_event_id']);
+  statements.push(db.prepare('INSERT INTO state_versions (household_id,version,updated_at) VALUES (?,?,?) ON CONFLICT(household_id) DO UPDATE SET version=excluded.version, updated_at=excluded.updated_at').bind(householdId, nextVersion, now()));
+  return statements;
+}
+function pushRows(statements, db, sql, rowsToInsert, fields) {
+  for (const row of rowsToInsert) statements.push(db.prepare(sql).bind(...fields.map((field) => row[field] ?? null)));
+}
+function rows(items, fields) {
+  return items.filter(isObject).map((item) => pick(item, fields));
+}
+function pick(item, fields) {
+  return Object.fromEntries(fields.map((field) => [field, item[field] ?? null]));
+}
+function isObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+async function stateVersion(db, householdId) {
+  const row = await db.prepare('SELECT version FROM state_versions WHERE household_id=?').bind(householdId).first();
+  return Number(row?.version || 1);
+}
 async function inventory(db, householdId) {
   const ingredients = await all(db, 'SELECT * FROM ingredients WHERE household_id=? ORDER BY name', householdId);
   const lots = await all(db, 'SELECT * FROM cube_lots WHERE household_id=? ORDER BY expires_at,made_at', householdId);

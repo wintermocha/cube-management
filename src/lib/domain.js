@@ -71,6 +71,24 @@ export function removeCubeLotFromState(data, lotId, deletedAt) {
   return { removed: true, state: { ...data, cubeLots }, lot };
 }
 
+export function adjustCubeLotCount(lots, lotId, delta, updatedAt) {
+  const lot = lots.find((item) => item.id === lotId && !item.deleted_at);
+  if (!lot || !Number.isInteger(delta) || delta === 0) return { changed: false, lots, adjusted_lot: null };
+  let adjustedLot = null;
+  const updatedLots = lots.map((item) => {
+    if (item.id !== lotId) return item;
+    const current = Number(item.remaining_count || 0);
+    if (delta > 0) {
+      adjustedLot = { lot_id: lotId, added_count: delta, remaining_count: current + delta };
+      return { ...item, initial_count: Number(item.initial_count || 0) + delta, remaining_count: current + delta, updated_at: updatedAt };
+    }
+    const usedCount = Math.min(current, Math.abs(delta));
+    adjustedLot = { lot_id: lotId, used_count: usedCount, remaining_count: current - usedCount };
+    return { ...item, remaining_count: current - usedCount, updated_at: updatedAt };
+  });
+  return { changed: Boolean(adjustedLot), lots: updatedLots, adjusted_lot: adjustedLot };
+}
+
 export function calculateForecast({ ingredients, lots, combinations, combinationItems, mealPlanSlots, startDate, days = 7 }) {
   const inventory = summarizeInventory(ingredients, lots);
   const stock = new Map(inventory.map((item) => [item.ingredient_id, item.current_count]));

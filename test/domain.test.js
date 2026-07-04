@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seedData } from '../src/lib/seed.js';
-import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState } from '../src/lib/domain.js';
+import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount } from '../src/lib/domain.js';
+import { mealScheduleTable } from '../src/lib/meal-table-view.js';
 
 test('current stock severity follows PRD thresholds', () => {
   assert.equal(stockSeverity(4), 'ok');
@@ -35,6 +36,14 @@ test('forecast multiplies combination needs by meal slot count', () => {
   const forecast = calculateForecast({ ingredients: data.ingredients, lots: data.cubeLots, combinations: data.combinations, combinationItems: data.combinationItems, mealPlanSlots: data.mealPlanSlots, startDate: '2026-07-03' });
   assert.equal(forecast.find((item) => item.ingredient_id === 'ing-beef').needed, 2);
   assert.equal(forecast.find((item) => item.ingredient_id === 'ing-rice').needed, 4);
+});
+
+test('meal table displays multiplied combination item counts', () => {
+  const data = seedData();
+  data.mealPlanSlots = [{ id: 'slot-double', date: '2026-07-03', meal_type: '점심', target_type: 'combination', combination_id: 'combo-beef-broccoli', cube_count: 2, status: 'planned' }];
+  const html = mealScheduleTable(data, '2026-07-03');
+  assert.match(html, /소고기 2개/);
+  assert.match(html, /쌀미음 4개/);
 });
 
 test('AI parser auto-applies only low-risk add stock', () => {
@@ -83,4 +92,26 @@ test('current stock whole delete clears lots without deleting the ingredient', (
   assert.equal(broccoli.current_count, 0);
   assert.equal(activeIngredients(result.state.ingredients).some((item) => item.id === 'ing-broccoli'), true);
   assert.equal(result.state.combinationItems.some((item) => item.ingredient_id === 'ing-broccoli'), true);
+});
+
+test('lot stock controls adjust only the selected made-date lot', () => {
+  const data = seedData();
+  data.cubeLots.push({ id: 'lot-beef-older', ingredient_id: 'ing-beef', made_at: '2026-06-29', initial_count: 2, remaining_count: 2 });
+  const result = adjustCubeLotCount(data.cubeLots, 'lot-beef-1', 1, '2026-07-04T00:00:00.000Z');
+  const adjusted = result.lots.find((lot) => lot.id === 'lot-beef-1');
+  const older = result.lots.find((lot) => lot.id === 'lot-beef-older');
+  assert.equal(adjusted.remaining_count, 6);
+  assert.equal(adjusted.initial_count, 6);
+  assert.equal(adjusted.made_at, '2026-07-01');
+  assert.equal(older.remaining_count, 2);
+  assert.equal(result.adjusted_lot.lot_id, 'lot-beef-1');
+});
+
+test('lot decrement does not go below zero', () => {
+  const data = seedData();
+  const result = adjustCubeLotCount(data.cubeLots, 'lot-broccoli-1', -3, '2026-07-04T00:00:00.000Z');
+  const adjusted = result.lots.find((lot) => lot.id === 'lot-broccoli-1');
+  assert.equal(adjusted.remaining_count, 0);
+  assert.equal(adjusted.initial_count, 3);
+  assert.equal(result.adjusted_lot.used_count, 3);
 });

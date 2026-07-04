@@ -9,11 +9,11 @@ export function wireAppEvents(handlers) {
   document.querySelectorAll('[data-add-ingredient]').forEach((button) => {
     button.onclick = () => handlers.onQuickAdd(button.dataset.addIngredient, Number(button.dataset.addQuantity || 1));
   });
-  document.querySelectorAll('[data-stock-increment]').forEach((button) => {
-    button.onclick = (event) => { event.stopPropagation(); handlers.onStockAdjust(button.dataset.stockIncrement, 1); };
+  document.querySelectorAll('[data-lot-increment]').forEach((button) => {
+    button.onclick = (event) => { event.stopPropagation(); handlers.onLotAdjust(button.dataset.lotIncrement, 1); };
   });
-  document.querySelectorAll('[data-stock-decrement]').forEach((button) => {
-    button.onclick = (event) => { event.stopPropagation(); handlers.onStockAdjust(button.dataset.stockDecrement, -1); };
+  document.querySelectorAll('[data-lot-decrement]').forEach((button) => {
+    button.onclick = (event) => { event.stopPropagation(); handlers.onLotAdjust(button.dataset.lotDecrement, -1); };
   });
   document.querySelectorAll('[data-delete-ingredient]').forEach((button) => {
     button.onclick = () => handlers.onIngredientDelete(button.dataset.deleteIngredient, true);
@@ -25,7 +25,8 @@ export function wireAppEvents(handlers) {
     button.onclick = (event) => { event.stopPropagation(); handlers.onLotDelete(button.dataset.deleteLot); };
   });
   document.querySelectorAll('[data-ingredient-status]').forEach((select) => {
-    select.onchange = () => handlers.onIngredientStatusChange(select.dataset.ingredientStatus, select.value);
+    select.onpointerdown = (event) => event.stopPropagation();
+    select.onchange = (event) => { event.stopPropagation(); handlers.onIngredientStatusChange(select.dataset.ingredientStatus, select.value); };
   });
   document.querySelectorAll('[data-edit-slot]').forEach((form) => {
     form.onchange = () => handlers.onSlotChange(form);
@@ -33,16 +34,11 @@ export function wireAppEvents(handlers) {
   document.querySelectorAll('[data-edit-combo]').forEach((form) => {
     form.onsubmit = (event) => { event.preventDefault(); handlers.onComboSubmit(form); };
   });
-  document.querySelectorAll('[data-stock-card]').forEach((card) => {
-    card.onclick = (event) => {
-      if (event.target.closest('button, input, select, textarea, label')) return;
-      handlers.onStockToggle(card.dataset.stockCard);
-    };
-    card.onkeydown = (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      handlers.onStockToggle(card.dataset.stockCard);
-    };
+  document.querySelectorAll('[data-stock-toggle]').forEach((button) => {
+    button.onclick = (event) => { event.stopPropagation(); handlers.onStockToggle(button.dataset.stockToggle); };
+  });
+  document.querySelectorAll('[data-ingredient-toggle]').forEach((button) => {
+    button.onclick = (event) => { event.stopPropagation(); handlers.onIngredientToggle(button.dataset.ingredientToggle); };
   });
 }
 

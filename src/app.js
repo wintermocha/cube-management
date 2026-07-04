@@ -1,20 +1,20 @@
 import { seedData } from './lib/seed.js';
-import { activeIngredients, summarizeInventory, calculateForecast, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, consumeLots } from './lib/domain.js';
+import { activeIngredients, summarizeInventory, calculateForecast, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount } from './lib/domain.js';
 import { wireAppEvents } from './lib/bindings.js';
 import { label, renderAppHtml, statusLabels, statusOptions } from './lib/view.js';
+import { createSharedStateSync } from './lib/api-state.js';
 
 const STORAGE_KEY = 'baby-food-cube-cloudflare-mvp';
+const ACTIVE_TAB_KEY = `${STORAGE_KEY}:active-tab`, TAB_IDS = ['today', 'inventory', 'items', 'meals', 'records'];
 let state = loadState();
-let activeTab = 'today';
-let pendingIngredientDeleteId = null;
-let pendingLotDeleteId = null;
-let expandedStockId = null;
+let activeTab = loadActiveTab();
+let pendingIngredientDeleteId = null, pendingLotDeleteId = null, expandedStockId = null, expandedIngredientId = null;
+const sharedState = createSharedStateSync({ getState: () => state, setState: (next) => { state = next; }, cacheKey: STORAGE_KEY, render, warn: (message) => showToast(message, 'warning') });
 
-function loadState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  try { return saved ? JSON.parse(saved) : seedData(); } catch { localStorage.removeItem(STORAGE_KEY); return seedData(); }
-}
-function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); }
+function loadState() { const saved = localStorage.getItem(STORAGE_KEY); try { return saved ? JSON.parse(saved) : seedData(); } catch { localStorage.removeItem(STORAGE_KEY); return seedData(); } }
+function loadActiveTab() { const saved = localStorage.getItem(ACTIVE_TAB_KEY); return TAB_IDS.includes(saved) ? saved : 'today'; }
+function saveState() { sharedState.save(); }
+function saveActiveTab(tabId) { localStorage.setItem(ACTIVE_TAB_KEY, tabId); }
 function id(prefix) { return `${prefix}-${crypto.randomUUID()}`; }
 function now() { return new Date().toISOString(); }
 function actor() { return 'caregiver-a@example.com'; }
@@ -33,28 +33,29 @@ function render() {
   const warnings = inventory.filter((item) => item.severity === 'warn');
   const shortages = forecast.filter((item) => item.shortage > 0);
   const nextMealCount = state.mealPlanSlots.filter((slot) => slot.status !== 'cancelled').length;
-  document.querySelector('#app').innerHTML = renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId });
+  document.querySelector('#app').innerHTML = renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate: localDate() });
   wireAppEvents({
     onTabChange: handleTabChange,
     onWeekChange: render,
     onLotSubmit: handleLotSubmit,
     onIngredientSubmit: handleIngredientSubmit,
     onQuickAdd: handleQuickAdd,
-    onStockAdjust: handleStockAdjust,
     onStockDelete: handleStockDelete,
+    onLotAdjust: handleLotAdjust,
     onIngredientDelete: handleIngredientDelete,
     onLotDelete: handleLotDelete,
     onIngredientStatusChange: handleIngredientStatusChange,
     onSlotChange: handleSlotChange,
     onComboSubmit: handleComboSubmit,
     onStockToggle: toggleStockDescription,
+    onIngredientToggle: toggleIngredientCard,
   });
 }
 function handleTabChange(tabId) {
+  if (!TAB_IDS.includes(tabId)) tabId = 'today';
   activeTab = tabId;
-  pendingIngredientDeleteId = null;
-  pendingLotDeleteId = null;
-  expandedStockId = null;
+  saveActiveTab(tabId);
+  pendingIngredientDeleteId = null; pendingLotDeleteId = null; expandedStockId = null; expandedIngredientId = null;
   render();
 }
 function handleLotSubmit(e) {
@@ -63,7 +64,7 @@ function handleLotSubmit(e) {
   const description = String(fd.get('description') || '').trim();
   const grams = parseOptionalPositiveNumber(fd.get('grams_per_cube'));
   if (grams === false) { showToast('큐브 무게는 0보다 큰 숫자로 입력해 주세요.', 'warning'); return; }
-  if (addLot({ ingredientId: fd.get('ingredient_id'), quantity: Number(fd.get('initial_count')), description, gramsPerCube: grams })) {
+  if (addLot({ ingredientId: fd.get('ingredient_id'), quantity: Number(fd.get('initial_count')), madeAt: fd.get('made_at'), description, gramsPerCube: grams })) {
     pendingIngredientDeleteId = null;
     pendingLotDeleteId = null;
     saveState();
@@ -78,25 +79,17 @@ function handleQuickAdd(ingredientId, quantity) {
     showToast(`${quantity}개를 추가했어요.`, 'success');
   }
 }
-function handleStockAdjust(ingredientId, delta) {
-  const ingredient = activeIngredients(state.ingredients).find((item) => item.id === ingredientId);
-  if (!ingredient) { showToast('품목을 찾지 못했어요.', 'warning'); return; }
-  if (delta > 0) {
-    addLot({ ingredientId, quantity: 1, description: '수동 + 버튼으로 추가' });
-    saveState();
-    showToast(`${ingredient.name} 1개를 추가했어요.`, 'success');
-    return;
-  }
-  try {
-    const beforeLots = state.cubeLots;
-    const result = consumeLots(state.cubeLots, ingredientId, 1);
-    state = { ...state, cubeLots: result.lots };
-    logEvent('stock_decrement', { ingredient_id: ingredientId, ingredient_name: ingredient.name, quantity: 1, consumed_lots: result.consumed_lots }, beforeLots, result.lots, 'manual');
-    saveState();
-    showToast(`${ingredient.name} 1개를 차감했어요.`, 'success');
-  } catch {
-    showToast('차감할 재고가 없어요.', 'warning');
-  }
+function handleLotAdjust(lotId, delta) {
+  const beforeLots = state.cubeLots;
+  const lot = beforeLots.find((item) => item.id === lotId && !item.deleted_at);
+  if (!lot) { showToast('조정할 재고를 찾지 못했어요.', 'warning'); return; }
+  if (delta < 0 && Number(lot.remaining_count || 0) <= 0) { showToast('차감할 재고가 없어요.', 'warning'); return; }
+  const result = adjustCubeLotCount(beforeLots, lotId, delta, now());
+  if (!result.changed) { showToast('재고를 조정하지 못했어요.', 'warning'); return; }
+  state = { ...state, cubeLots: result.lots };
+  logEvent(delta > 0 ? 'stock_increment' : 'stock_decrement', { lot_id: lotId, ingredient_id: lot.ingredient_id, delta, adjusted_lot: result.adjusted_lot }, beforeLots, result.lots, 'manual');
+  saveState();
+  showToast(`${lot.made_at || '날짜 없음'} 재고를 ${delta > 0 ? '추가' : '차감'}했어요.`, 'success');
 }
 function handleIngredientSubmit(e) {
   e.preventDefault();
@@ -176,9 +169,11 @@ function handleLotDelete(lotId) {
 }
 function toggleStockDescription(ingredientId) {
   expandedStockId = expandedStockId === ingredientId ? null : ingredientId;
-  pendingIngredientDeleteId = null;
-  pendingLotDeleteId = null;
-  render();
+  pendingIngredientDeleteId = null; pendingLotDeleteId = null; render();
+}
+function toggleIngredientCard(ingredientId) {
+  expandedIngredientId = expandedIngredientId === ingredientId ? null : ingredientId;
+  pendingIngredientDeleteId = null; pendingLotDeleteId = null; render();
 }
 function handleSlotChange(form) {
   const fd = new FormData(form);
@@ -242,11 +237,13 @@ function parseOptionalPositiveNumber(value) {
   if (!Number.isFinite(parsed) || parsed <= 0) return false;
   return parsed;
 }
-function addLot({ ingredientId, quantity, description = '', source = 'manual', gramsPerCube = null }) {
+function localDate() { const date = new Date(); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function addLot({ ingredientId, quantity, madeAt = localDate(), description = '', source = 'manual', gramsPerCube = null }) {
   if (!ingredientId || !Number.isInteger(quantity) || quantity < 1) { showToast('수량은 1개 이상 입력해 주세요.', 'warning'); return null; }
-  const lot = { id: id('lot'), household_id: 'home', ingredient_id: ingredientId, made_at: new Date().toISOString().slice(0,10), expires_at: '', initial_count: quantity, remaining_count: quantity, grams_per_cube: gramsPerCube, storage_location: '', description, created_at: now(), updated_at: now() };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(madeAt))) { showToast('만든 날짜를 선택해 주세요.', 'warning'); return null; }
+  const lot = { id: id('lot'), household_id: 'home', ingredient_id: ingredientId, made_at: madeAt, expires_at: '', initial_count: quantity, remaining_count: quantity, grams_per_cube: gramsPerCube, storage_location: '', description, created_at: now(), updated_at: now() };
   state.cubeLots.push(lot);
   return logEvent('stock_add', { lot }, null, lot, source);
 }
 function showToast(message, tone = 'info') { const toast = document.querySelector('#toast'); if (toast) { toast.dataset.tone = tone; toast.textContent = message; } }
-render();
+render(); sharedState.load();

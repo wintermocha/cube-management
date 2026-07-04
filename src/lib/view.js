@@ -1,10 +1,11 @@
 import { activeIngredients } from './domain.js';
+import { mealScheduleTable } from './meal-table-view.js';
 
 export const statusLabels = { not_tried: '미시도', planned: '예정', testing: '테스트 중', tolerated: '적응 완료', suspected_reaction: '반응 의심', cancelled: '삭제됨' };
 export const statusOptions = ['not_tried', 'planned', 'testing', 'tolerated', 'suspected_reaction'];
 
 const severityLabels = { ok: '충분', warn: '주의', error: '긴급' };
-const eventLabels = { stock_add: '재고 추가', stock_decrement: '재고 차감', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', meal_slot_update: '식단 수정', combo_update: '조합 수정' };
+const eventLabels = { stock_add: '재고 추가', stock_increment: '재고 증가', stock_decrement: '재고 차감', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', meal_slot_update: '식단 수정', combo_update: '조합 수정' };
 const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const workspaceTabs = [{ id: 'today', label: '오늘', detail: '할 일' }, { id: 'inventory', label: '재고', detail: '현재' }, { id: 'items', label: '품목', detail: '관리' }, { id: 'meals', label: '식단', detail: '계획' }, { id: 'records', label: '기록', detail: '변경' }];
 const workspaceCopy = {
@@ -23,10 +24,10 @@ export function label(map, value) {
   return map[value] || text(value);
 }
 
-export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId }) {
+export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate }) {
   const currentCopy = workspaceCopy[activeTab] || workspaceCopy.today;
   return `
-    <main id="main" class="app-shell">
+    <main id="main" class="app-shell app-shell-${text(activeTab)}">
       <div id="toast" class="toast app-toast" aria-live="polite"></div>
       <section class="workspace-hero" aria-labelledby="workspaceTitle">
         <p class="eyebrow">${text(currentCopy.eyebrow)}</p>
@@ -38,8 +39,8 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
         ${metricTile('주의', `${warnings.length}건`, warnings.length ? '재고 낮음' : '안정적', warnings.length ? 'warning' : 'success')}${metricTile('부족 예정', `${shortages.length}건`, `${nextMealCount}개 식단 반영`, shortages.length ? 'error' : 'success')}
       </div>
       ${tabPanel('today', activeTab, todayPanel({ critical, warnings, shortages }))}
-      ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId }))}
-      ${tabPanel('items', activeTab, itemsPanel({ ingredients }))}
+      ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId, todayDate }))}
+      ${tabPanel('items', activeTab, itemsPanel({ ingredients, expandedIngredientId }))}
       ${tabPanel('meals', activeTab, mealsPanel({ state, weekStart }))}
       ${tabPanel('records', activeTab, recordsPanel({ state }))}
       <nav class="workspace-tabs bottom-tabs" role="tablist" aria-label="기능 분류">${workspaceTabs.map((tab) => tabButton(tab, activeTab)).join('')}</nav>
@@ -60,30 +61,31 @@ function todayPanel({ critical, warnings, shortages }) {
   </section>`;
 }
 
-function inventoryPanel({ ingredients, inventory, expandedStockId }) {
+function inventoryPanel({ ingredients, inventory, expandedStockId, todayDate }) {
   return `<section class="section section-tight" aria-labelledby="stockAddTitle">
     <div class="section-head">
       <div><p class="eyebrow">직접 추가</p><h2 id="stockAddTitle">재고 추가</h2></div>
-      <p>품목, 수량, 큐브 1개 무게를 입력한 뒤 추가하세요.</p>
+      <p>날짜, 품목, 수량, 무게를 한 줄에서 입력해요.</p>
     </div>
     ${ingredients.length ? `<form id="lotForm" class="form-card stock-add-form">
+      <label class="field"><span>만든 날짜</span><input id="lotMadeAt" name="made_at" type="date" value="${text(todayDate)}" required></label>
       <label class="field"><span>품목</span><select id="lotIngredient" name="ingredient_id">${ingredients.map((item) => `<option value="${text(item.id)}">${text(item.name)}</option>`).join('')}</select></label>
-      <label class="field"><span>수량</span><input id="lotCount" name="initial_count" type="number" inputmode="numeric" min="1" max="200" value="1"></label>
-      <label class="field"><span>큐브 1개 무게(g)</span><input id="lotGramsPerCube" name="grams_per_cube" type="number" inputmode="decimal" min="0" max="500" step="0.1" placeholder="예: 15"></label>
-      <label class="field field-full"><span>설명</span><textarea id="lotDescription" name="description" rows="3" placeholder="예: 오전에 만든 묽은 큐브, A칸 앞쪽"></textarea></label>
+      <label class="field"><span>수량</span><input id="lotCount" name="initial_count" type="number" inputmode="numeric" min="1" max="200" value="1" required></label>
+      <label class="field"><span>무게(g)</span><input id="lotGramsPerCube" name="grams_per_cube" type="number" inputmode="decimal" min="0.1" max="500" step="0.1" value="15" required></label>
+      <label class="field"><span>설명</span><input id="lotDescription" name="description" autocomplete="off" placeholder="예: A칸 앞쪽"></label>
       <button class="button button-primary" type="submit">추가</button>
     </form>` : emptyState('먼저 품목을 추가해 주세요.')}
   </section>
   <section class="section" aria-labelledby="cubeTitle">
     <div class="section-head">
       <div><p class="eyebrow">냉동실</p><h2 id="cubeTitle">현재 재고</h2></div>
-      <p>품목 카드는 왼쪽으로 밀면 전체 삭제 버튼이 나와요.</p>
+      <p>품목별 요약을 먼저 보고, 아래 화살표로 날짜별 재고를 펼쳐요.</p>
     </div>
     <div class="card-grid inventory-grid">${inventory.map((item) => stockCard(item, expandedStockId)).join('') || emptyState('아직 재고가 없어요.')}</div>
   </section>`;
 }
 
-function itemsPanel({ ingredients }) {
+function itemsPanel({ ingredients, expandedIngredientId }) {
   return `<section class="section section-tight" aria-labelledby="ingredientTitle" data-item-management-panel>
     <div class="section-head">
       <div><p class="eyebrow">품목 관리</p><h2 id="ingredientTitle">품목 추가/상태 변경</h2></div>
@@ -93,7 +95,7 @@ function itemsPanel({ ingredients }) {
       <label class="field"><span>새 품목</span><input id="ingredientName" name="name" autocomplete="off" placeholder="예: 당근"></label>
       <button class="button button-primary" type="submit">품목 추가</button>
     </form>
-    <div class="card-grid compact-grid item-management">${ingredients.map(ingredientCard).join('') || emptyState('등록된 품목이 없어요.')}</div>
+    <div class="card-grid compact-grid item-management">${ingredients.map((item) => ingredientCard(item, expandedIngredientId)).join('') || emptyState('등록된 품목이 없어요.')}</div>
   </section>`;
 }
 
@@ -103,6 +105,8 @@ function mealsPanel({ state, weekStart }) {
       <div><p class="eyebrow">7일 계획</p><h2 id="mealTitle">식단표</h2></div>
       <label class="date-control">시작일 <input id="weekStart" value="${text(weekStart)}" type="date"></label>
     </div>
+    ${mealScheduleTable(state, weekStart)}
+    <h3 class="subsection-title">식단표 수정</h3>
     <div class="card-grid meal-grid">${state.mealPlanSlots.map((slot) => slotCard(slot, state)).join('')}</div>
   </section>
   <section class="section" aria-labelledby="comboTitle">
@@ -155,25 +159,24 @@ function stockCard(item, expandedStockId) {
   const expanded = expandedStockId === item.ingredient_id;
   return `<div class="swipe-shell" data-swipe-delete data-delete-kind="stock" data-delete-id="${text(item.ingredient_id)}">
     <button class="swipe-action" type="button" tabindex="-1" aria-hidden="true" data-delete-stock="${text(item.ingredient_id)}">전체 삭제</button>
-    <article class="data-card inventory-card is-${item.severity}${expanded ? ' is-expanded' : ''}" data-stock-card="${text(item.ingredient_id)}" tabindex="0" role="button" aria-expanded="${expanded}">
+    <article class="data-card inventory-card is-${item.severity}${expanded ? ' is-expanded' : ''}" data-stock-card="${text(item.ingredient_id)}">
       <div><b>${text(item.ingredient_name)}</b><span>${text(item.category || '카테고리 없음')}</span></div>
       <strong>${text(item.current_count)}개</strong>
       <em>${severityLabels[item.severity]}${item.empty_label ? ` · ${text(item.empty_label)}` : ''}</em>
-      <div class="stock-controls" aria-label="${text(item.ingredient_name)} 재고 증감">
-        <button class="button button-small button-secondary" type="button" data-stock-decrement="${text(item.ingredient_id)}">-</button>
-        <span>${text(item.current_count)}개</span>
-        <button class="button button-small button-secondary" type="button" data-stock-increment="${text(item.ingredient_id)}">+</button>
-      </div>
-      <div class="lot-box-list">${item.lots.map(lotRow).join('') || emptyState('등록된 큐브가 없어요.')}</div>
-      ${expanded ? `<div class="stock-description"><b>설명</b>${item.lots.map(lotDescription).join('') || '<p>저장된 설명이 없어요.</p>'}</div>` : ''}
+      <button class="stock-toggle" type="button" aria-label="${text(item.ingredient_name)} 날짜별 재고 펼치기" aria-expanded="${expanded}" data-stock-toggle="${text(item.ingredient_id)}">${chevronIcon()}</button>
+      ${expanded ? `<div class="stock-detail"><div class="lot-box-list">${item.lots.map(lotRow).join('') || emptyState('등록된 큐브가 없어요.')}</div><div class="stock-description"><b>설명</b>${item.lots.map(lotDescription).join('') || '<p>저장된 설명이 없어요.</p>'}</div></div>` : ''}
     </article>
   </div>`;
 }
 
 function lotRow(lot) {
   return `<div class="lot-box">
-    <span>${text(lot.made_at || '날짜 없음')}</span>
-    <b>${text(lot.initial_count)}개 만듦 · ${text(lot.remaining_count)}개 남음${lot.grams_per_cube ? ` · ${text(lot.grams_per_cube)}g/개` : ''}</b>
+    <div><span>${text(lot.made_at || '날짜 없음')}</span><b>${text(lot.initial_count)}개 만듦 · ${text(lot.remaining_count)}개 남음${lot.grams_per_cube ? ` · ${text(lot.grams_per_cube)}g/개` : ''}</b></div>
+    <div class="lot-controls" aria-label="${text(lot.made_at || '날짜 없음')} 재고 증감">
+      <button class="button button-small button-secondary" type="button" data-lot-decrement="${text(lot.id)}">-</button>
+      <span>${text(lot.remaining_count)}개</span>
+      <button class="button button-small button-secondary" type="button" data-lot-increment="${text(lot.id)}">+</button>
+    </div>
     <button class="trash-button" type="button" aria-label="재고 삭제" title="휴지통" data-delete-lot="${text(lot.id)}">${trashIcon()}</button>
   </div>`;
 }
@@ -198,12 +201,16 @@ function slotCard(slot, state) {
   </form>`;
 }
 
-function ingredientCard(item) {
+function ingredientCard(item, expandedIngredientId) {
+  const expanded = expandedIngredientId === item.id;
   return `<div class="swipe-shell" data-swipe-delete data-delete-kind="ingredient" data-delete-id="${text(item.id)}">
     <button class="swipe-action" type="button" tabindex="-1" aria-hidden="true" data-delete-ingredient="${text(item.id)}">삭제</button>
-    <article class="data-card ingredient-card">
-      <div><b>${text(item.name)}</b><span>${text(item.category || '카테고리 없음')}</span><em>${label(statusLabels, item.status)}</em>${item.status === 'suspected_reaction' ? '<small>진단이 아닌 기록 상태예요.</small>' : ''}</div>
-      <label class="field status-field"><span>적응 상태</span><select data-ingredient-status="${text(item.id)}">${statusOptions.map((status) => `<option value="${status}"${item.status === status ? ' selected' : ''}>${label(statusLabels, status)}</option>`).join('')}</select></label>
+    <article class="data-card ingredient-card${expanded ? ' is-expanded' : ''}">
+      <div class="ingredient-summary">
+        <div><b>${text(item.name)}</b><span>${text(item.category || '카테고리 없음')}</span><em>${label(statusLabels, item.status)}</em>${item.status === 'suspected_reaction' ? '<small>진단이 아닌 기록 상태예요.</small>' : ''}</div>
+        <button class="ingredient-toggle" type="button" aria-label="${text(item.name)} 상태 변경 펼치기" aria-expanded="${expanded}" data-ingredient-toggle="${text(item.id)}">${chevronIcon()}</button>
+      </div>
+      ${expanded ? `<div class="ingredient-detail"><label class="field status-field"><span>적응 상태</span><select data-ingredient-status="${text(item.id)}">${statusOptions.map((status) => `<option value="${status}"${item.status === status ? ' selected' : ''}>${label(statusLabels, status)}</option>`).join('')}</select></label></div>` : ''}
     </article>
   </div>`;
 }
@@ -234,4 +241,8 @@ function emptyState(copy) {
 
 function trashIcon() {
   return '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="M9 4h6l1 2h4v2H4V6h4l1-2Zm-2 6h10l-.7 10H7.7L7 10Zm3 2v6h2v-6h-2Zm4 0v6h2v-6h-2Z" fill="currentColor"/></svg>';
+}
+
+function chevronIcon() {
+  return '<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20"><path d="M7 10l5 5 5-5H7Z" fill="currentColor"/></svg>';
 }
