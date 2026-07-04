@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seedData } from '../src/lib/seed.js';
-import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState } from '../src/lib/domain.js';
+import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeCubeLotFromState } from '../src/lib/domain.js';
 
 test('current stock severity follows PRD thresholds', () => {
   assert.equal(stockSeverity(4), 'ok');
@@ -51,4 +51,14 @@ test('deleted ingredients disappear and their stock is cleared', () => {
   assert.equal(activeIngredients(result.state.ingredients).some((item) => item.id === 'ing-broccoli'), false);
   assert.equal(result.state.cubeLots.find((lot) => lot.id === 'lot-broccoli-1').remaining_count, 0);
   assert.equal(summarizeInventory(result.state.ingredients, result.state.cubeLots).some((item) => item.ingredient_id === 'ing-broccoli'), false);
+});
+
+test('deleted cube lots disappear from inventory while keeping ingredient', () => {
+  const data = seedData();
+  const result = removeCubeLotFromState(data, 'lot-broccoli-1', '2026-07-04T00:00:00.000Z');
+  const broccoli = summarizeInventory(result.state.ingredients, result.state.cubeLots).find((item) => item.ingredient_id === 'ing-broccoli');
+  assert.equal(result.removed, true);
+  assert.equal(broccoli.current_count, 0);
+  assert.equal(broccoli.lots.length, 0);
+  assert.equal(activeIngredients(result.state.ingredients).some((item) => item.id === 'ing-broccoli'), true);
 });

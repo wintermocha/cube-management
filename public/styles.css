@@ -66,13 +66,15 @@ body {
 body,
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   min-height: 56px;
   border-radius: var(--radius-control);
 }
@@ -84,6 +86,7 @@ button {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 a:focus-visible {
   outline: 0;
   border-color: var(--color-accent);
@@ -91,7 +94,8 @@ a:focus-visible {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--color-input-border);
@@ -102,7 +106,12 @@ select {
   padding: 14px var(--space-4);
 }
 
-input::placeholder {
+textarea {
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
   color: var(--color-placeholder);
 }
 
@@ -152,45 +161,29 @@ small,
   transform: translateY(0);
 }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: min(480px, 100%);
-  margin: 0 auto;
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-canvas) 94%, transparent);
-  backdrop-filter: blur(12px);
-}
-
-.brand {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-}
-
-.brand strong {
-  color: var(--color-ink);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 24px;
-}
-
-.brand span {
-  color: var(--color-muted);
-  font-size: 13px;
-  line-height: 20px;
-}
-
 .app-shell {
   width: min(480px, 100%);
   margin: 0 auto;
   padding: var(--space-5) var(--space-5) var(--space-12);
+}
+
+.workspace-hero {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0 var(--space-4);
+}
+
+.workspace-hero h1 {
+  color: var(--color-ink);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 36px;
+}
+
+.workspace-hero p:not(.eyebrow) {
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .eyebrow {
@@ -272,7 +265,7 @@ small,
 }
 
 .button-danger {
-  background: rgba(251, 136, 144, 0.15);
+  background: var(--color-error-soft);
   color: #e42939;
 }
 
@@ -333,7 +326,7 @@ small,
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
   margin-top: 0;
 }
@@ -349,13 +342,9 @@ small,
 
 .metric {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-5);
-}
-
-.metric:first-child {
-  grid-column: 1 / -1;
-  padding: var(--space-6);
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
 }
 
 .metric span,
@@ -369,9 +358,9 @@ small,
 
 .metric strong {
   color: var(--color-ink);
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 700;
-  line-height: 36px;
+  line-height: 30px;
 }
 
 .metric small {
@@ -407,10 +396,16 @@ small,
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-1);
-  margin-top: var(--space-4);
   padding: var(--space-1);
   border-radius: var(--radius-card);
   background: var(--color-surface-raised);
+}
+
+.bottom-tabs {
+  position: static;
+  z-index: 6;
+  margin-top: var(--space-8);
+  box-shadow: var(--shadow-elevated);
 }
 
 .tab-button {
@@ -511,6 +506,10 @@ small,
   display: grid;
   align-content: start;
   gap: var(--space-2);
+  border-radius: var(--radius-tool);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-standard);
+  padding: var(--space-3);
 }
 
 .alert-group h3,
@@ -528,6 +527,16 @@ small,
   gap: var(--space-3);
   min-height: 52px;
   padding: var(--space-3) var(--space-4);
+}
+
+.cube-box-list,
+.lot-box-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.cube-box {
+  box-shadow: none;
 }
 
 .alert-row div {
@@ -602,6 +611,7 @@ em {
 .inventory-card {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
+  cursor: pointer;
 }
 
 .inventory-card > div {
@@ -620,6 +630,60 @@ em {
 
 .inventory-card em {
   grid-column: 1 / -1;
+}
+
+.lot-box-list,
+.stock-description {
+  grid-column: 1 / -1;
+}
+
+.lot-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-3);
+  align-items: center;
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: var(--space-3);
+}
+
+.lot-box span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.lot-box b {
+  color: var(--color-strong);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.lot-box .trash-button {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+.stock-description {
+  display: grid;
+  gap: var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--color-accent-soft);
+  padding: var(--space-3);
+}
+
+.stock-description p {
+  display: grid;
+  gap: 2px;
+  color: var(--color-strong);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.stock-description span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .stock-add-form,
@@ -641,6 +705,38 @@ em {
 .card-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.trash-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--color-weak-dark);
+  color: var(--color-muted);
+  padding: 0;
+  transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-enter);
+}
+
+.trash-button:hover {
+  background: var(--color-error-soft);
+  color: var(--color-error);
+}
+
+.trash-button.is-active,
+.is-delete-pending .trash-button,
+.lot-box.is-delete-pending .trash-button {
+  background: var(--color-error);
+  color: var(--color-surface);
+}
+
+.is-delete-pending {
+  background: var(--color-error-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error) 34%, transparent);
 }
 
 .item-management {
@@ -728,14 +824,6 @@ em {
 }
 
 @media (max-width: 520px) {
-  .topbar {
-    padding: var(--space-2) var(--space-5);
-  }
-
-  .brand span {
-    font-size: 0.76rem;
-  }
-
   .button-secondary {
     min-height: 40px;
     border-radius: 10px;
@@ -747,6 +835,12 @@ em {
     padding: var(--space-4) var(--space-5) var(--space-12);
   }
 
+  .section-head {
+    display: grid;
+    align-items: start;
+    gap: var(--space-2);
+  }
+
   .form-card {
     padding: var(--space-4);
   }
@@ -756,7 +850,7 @@ em {
   }
 
   .metric {
-    padding: var(--space-4);
+    padding: var(--space-3);
   }
 
   .metric:first-child {
