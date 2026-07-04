@@ -27,27 +27,50 @@ export async function persistSharedState(state) {
 }
 
 export function createSharedStateSync({ getState, setState, cacheKey, render, warn }) {
+  let saving = false;
+  let queued = false;
+  async function flush() {
+    if (saving) return;
+    saving = true;
+    try {
+      while (queued) {
+        queued = false;
+        const saved = await persistSharedState(getState());
+        if (queued) {
+          setState({ ...getState(), syncVersion: saved.syncVersion });
+          localStorage.setItem(cacheKey, JSON.stringify(getState()));
+          continue;
+        }
+        setState(saved);
+        localStorage.setItem(cacheKey, JSON.stringify(saved));
+        render();
+      }
+    } catch (error) {
+      if (error.status === 409 && error.state) {
+        if (queued) {
+          setState({ ...getState(), syncVersion: error.state.syncVersion });
+          localStorage.setItem(cacheKey, JSON.stringify(getState()));
+        } else {
+          setState(error.state);
+          localStorage.setItem(cacheKey, JSON.stringify(error.state));
+          render();
+          warn('다른 기기에서 먼저 저장된 내용이 있어 최신 데이터로 다시 불러왔어요.');
+        }
+      } else {
+        warn('공유 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
+      }
+    } finally {
+      saving = false;
+      if (queued) flush();
+    }
+  }
   return {
     save() {
       const current = getState();
       localStorage.setItem(cacheKey, JSON.stringify(current));
       render();
-      persistSharedState(current)
-        .then((saved) => {
-          setState(saved);
-          localStorage.setItem(cacheKey, JSON.stringify(saved));
-          render();
-        })
-        .catch((error) => {
-          if (error.status === 409 && error.state) {
-            setState(error.state);
-            localStorage.setItem(cacheKey, JSON.stringify(error.state));
-            render();
-            warn('다른 기기에서 먼저 저장된 내용이 있어 최신 데이터로 다시 불러왔어요.');
-            return;
-          }
-          warn('공유 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
-        });
+      queued = true;
+      flush();
     },
     async load() {
       try {

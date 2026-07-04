@@ -3,9 +3,10 @@ import { mealScheduleTable } from './meal-table-view.js';
 
 export const statusLabels = { not_tried: '미시도', planned: '예정', testing: '테스트 중', tolerated: '적응 완료', suspected_reaction: '반응 의심', cancelled: '삭제됨' };
 export const statusOptions = ['not_tried', 'planned', 'testing', 'tolerated', 'suspected_reaction'];
+export const categoryOptions = ['고기', '채소', '과일'];
 
 const severityLabels = { ok: '충분', warn: '주의', error: '긴급' };
-const eventLabels = { stock_add: '재고 추가', stock_increment: '재고 증가', stock_decrement: '재고 차감', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', meal_slot_update: '식단 수정', combo_update: '조합 수정' };
+const eventLabels = { stock_add: '재고 추가', stock_increment: '재고 증가', stock_decrement: '재고 차감', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', ingredient_category_update: '카테고리 변경', meal_slot_update: '식단 수정', combo_update: '조합 수정' };
 const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const workspaceTabs = [{ id: 'today', label: '오늘', detail: '할 일' }, { id: 'inventory', label: '재고', detail: '현재' }, { id: 'items', label: '품목', detail: '관리' }, { id: 'meals', label: '식단', detail: '계획' }, { id: 'records', label: '기록', detail: '변경' }];
 const workspaceCopy = {
@@ -24,7 +25,7 @@ export function label(map, value) {
   return map[value] || text(value);
 }
 
-export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate }) {
+export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate, lotFormDefaults }) {
   const currentCopy = workspaceCopy[activeTab] || workspaceCopy.today;
   return `
     <main id="main" class="app-shell app-shell-${text(activeTab)}">
@@ -39,7 +40,7 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
         ${metricTile('주의', `${warnings.length}건`, warnings.length ? '재고 낮음' : '안정적', warnings.length ? 'warning' : 'success')}${metricTile('부족 예정', `${shortages.length}건`, `${nextMealCount}개 식단 반영`, shortages.length ? 'error' : 'success')}
       </div>
       ${tabPanel('today', activeTab, todayPanel({ critical, warnings, shortages }))}
-      ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId, todayDate }))}
+      ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId, todayDate, lotFormDefaults }))}
       ${tabPanel('items', activeTab, itemsPanel({ ingredients, expandedIngredientId }))}
       ${tabPanel('meals', activeTab, mealsPanel({ state, weekStart }))}
       ${tabPanel('records', activeTab, recordsPanel({ state }))}
@@ -61,18 +62,21 @@ function todayPanel({ critical, warnings, shortages }) {
   </section>`;
 }
 
-function inventoryPanel({ ingredients, inventory, expandedStockId, todayDate }) {
+function inventoryPanel({ ingredients, inventory, expandedStockId, todayDate, lotFormDefaults }) {
+  const defaults = lotFormDefaults || {};
   return `<section class="section section-tight" aria-labelledby="stockAddTitle">
     <div class="section-head">
       <div><p class="eyebrow">직접 추가</p><h2 id="stockAddTitle">재고 추가</h2></div>
       <p>날짜, 품목, 수량, 무게를 한 줄에서 입력해요.</p>
     </div>
     ${ingredients.length ? `<form id="lotForm" class="form-card stock-add-form">
-      <label class="field"><span>만든 날짜</span><input id="lotMadeAt" name="made_at" type="date" value="${text(todayDate)}" required></label>
-      <label class="field"><span>품목</span><select id="lotIngredient" name="ingredient_id">${ingredients.map((item) => `<option value="${text(item.id)}">${text(item.name)}</option>`).join('')}</select></label>
-      <label class="field"><span>수량</span><input id="lotCount" name="initial_count" type="number" inputmode="numeric" min="1" max="200" value="1" required></label>
-      <label class="field"><span>무게(g)</span><input id="lotGramsPerCube" name="grams_per_cube" type="number" inputmode="decimal" min="0.1" max="500" step="0.1" value="15" required></label>
-      <label class="field"><span>설명</span><input id="lotDescription" name="description" autocomplete="off" placeholder="예: A칸 앞쪽"></label>
+      <label class="field"><span>만든 날짜</span><input id="lotMadeAt" name="made_at" type="date" value="${text(defaults.madeAt || todayDate)}" required></label>
+      <div class="stock-add-inline-row">
+        <label class="field"><span>품목</span><select id="lotIngredient" name="ingredient_id">${ingredients.map((item) => `<option value="${text(item.id)}"${defaults.ingredientId === item.id ? ' selected' : ''}>${text(item.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>수량</span><input id="lotCount" name="initial_count" type="number" inputmode="numeric" min="1" max="200" value="${text(defaults.quantity || 1)}" required></label>
+        <label class="field"><span>무게(g)</span><input id="lotGramsPerCube" name="grams_per_cube" type="number" inputmode="decimal" min="0.1" max="500" step="0.1" value="${text(defaults.gramsPerCube || 15)}" required></label>
+      </div>
+      <label class="field"><span>설명</span><input id="lotDescription" name="description" autocomplete="off" placeholder="고기 100g 물 20g 블랜더 30초  " value="${text(defaults.description || '')}"></label>
       <button class="button button-primary" type="submit">추가</button>
     </form>` : emptyState('먼저 품목을 추가해 주세요.')}
   </section>
@@ -93,6 +97,7 @@ function itemsPanel({ ingredients, expandedIngredientId }) {
     </div>
     <form id="ingredientForm" class="form-card ingredient-form">
       <label class="field"><span>새 품목</span><input id="ingredientName" name="name" autocomplete="off" placeholder="예: 당근"></label>
+      <label class="field"><span>카테고리</span><select id="ingredientCategory" name="category">${categoryOptions.map((category) => `<option value="${text(category)}">${text(category)}</option>`).join('')}</select></label>
       <button class="button button-primary" type="submit">품목 추가</button>
     </form>
     <div class="card-grid compact-grid item-management">${ingredients.map((item) => ingredientCard(item, expandedIngredientId)).join('') || emptyState('등록된 품목이 없어요.')}</div>
@@ -210,7 +215,10 @@ function ingredientCard(item, expandedIngredientId) {
         <div><b>${text(item.name)}</b><span>${text(item.category || '카테고리 없음')}</span><em>${label(statusLabels, item.status)}</em>${item.status === 'suspected_reaction' ? '<small>진단이 아닌 기록 상태예요.</small>' : ''}</div>
         <button class="ingredient-toggle" type="button" aria-label="${text(item.name)} 상태 변경 펼치기" aria-expanded="${expanded}" data-ingredient-toggle="${text(item.id)}">${chevronIcon()}</button>
       </div>
-      ${expanded ? `<div class="ingredient-detail"><label class="field status-field"><span>적응 상태</span><select data-ingredient-status="${text(item.id)}">${statusOptions.map((status) => `<option value="${status}"${item.status === status ? ' selected' : ''}>${label(statusLabels, status)}</option>`).join('')}</select></label></div>` : ''}
+      ${expanded ? `<div class="ingredient-detail">
+        <label class="field status-field"><span>적응 상태</span><select data-ingredient-status="${text(item.id)}">${statusOptions.map((status) => `<option value="${status}"${item.status === status ? ' selected' : ''}>${label(statusLabels, status)}</option>`).join('')}</select></label>
+        <label class="field category-field"><span>카테고리</span><select data-ingredient-category="${text(item.id)}">${categoryOptions.map((category) => `<option value="${text(category)}"${item.category === category ? ' selected' : ''}>${text(category)}</option>`).join('')}</select></label>
+      </div>` : ''}
     </article>
   </div>`;
 }

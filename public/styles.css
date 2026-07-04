@@ -768,17 +768,28 @@ em {
 }
 
 .stock-add-form {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+}
+
+.stock-add-inline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(68px, .48fr) minmax(84px, .62fr);
+  gap: var(--space-2);
+  align-items: end;
 }
 
 .stock-add-form .button {
-  grid-column: 1 / -1;
+  width: 100%;
 }
 
 @media (min-width: 900px) {
   .stock-add-form {
-    grid-template-columns: minmax(170px, 1fr) minmax(132px, .9fr) minmax(80px, .55fr) minmax(96px, .65fr) minmax(150px, 1fr) auto;
+    grid-template-columns: minmax(160px, .7fr) minmax(360px, 1.8fr) minmax(220px, 1fr) auto;
     align-items: end;
+  }
+
+  .stock-add-inline-row {
+    grid-template-columns: minmax(160px, 1fr) minmax(72px, .45fr) minmax(96px, .55fr);
   }
 
   .stock-add-form .button {
@@ -808,6 +819,9 @@ em {
 }
 
 .ingredient-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
   border-top: 1px solid var(--color-border);
   padding-top: var(--space-3);
 }
@@ -875,7 +889,8 @@ em {
   margin-top: var(--space-2);
 }
 
-.status-field select {
+.status-field select,
+.category-field select {
   min-height: 48px;
 }
 
@@ -1039,7 +1054,8 @@ em {
 }
 
 .ingredient-form {
-  justify-content: start;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, .55fr) auto;
+  align-items: end;
   margin-bottom: var(--space-3);
 }
 
@@ -1138,9 +1154,20 @@ em {
     margin-top: var(--space-8);
   }
 
-  .stock-add-form,
   .combo-items {
     grid-template-columns: 1fr;
+  }
+
+  .stock-add-inline-row {
+    grid-template-columns: minmax(0, 1fr) minmax(58px, .48fr) minmax(74px, .62fr);
+  }
+
+  .stock-add-inline-row .field {
+    gap: var(--space-1);
+  }
+
+  .stock-add-inline-row .field span {
+    font-size: 12px;
   }
 
   .lot-box {
@@ -1157,5 +1184,10 @@ em {
 
   .lot-box .trash-button {
     grid-column: 2;
+  }
+
+  .ingredient-form,
+  .ingredient-detail {
+    grid-template-columns: 1fr;
   }
 }

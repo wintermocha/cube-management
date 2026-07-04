@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seedData } from '../src/lib/seed.js';
-import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount } from '../src/lib/domain.js';
+import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from '../src/lib/domain.js';
 import { mealScheduleTable } from '../src/lib/meal-table-view.js';
 
 test('current stock severity follows PRD thresholds', () => {
@@ -105,6 +105,31 @@ test('lot stock controls adjust only the selected made-date lot', () => {
   assert.equal(adjusted.made_at, '2026-07-01');
   assert.equal(older.remaining_count, 2);
   assert.equal(result.adjusted_lot.lot_id, 'lot-beef-1');
+});
+
+test('adding stock merges into an existing lot for the same ingredient and made date', () => {
+  const data = seedData();
+  const result = upsertCubeLotForDate(data.cubeLots, {
+    id: 'lot-new',
+    household_id: 'home',
+    ingredient_id: 'ing-broccoli',
+    made_at: '2026-07-02',
+    expires_at: '',
+    initial_count: 2,
+    remaining_count: 2,
+    grams_per_cube: 15,
+    storage_location: '',
+    description: '고기 100g 물 20g 블랜더 30초',
+    created_at: '2026-07-04T00:00:00.000Z',
+    updated_at: '2026-07-04T00:00:00.000Z',
+  });
+  const broccoliLots = result.lots.filter((lot) => lot.ingredient_id === 'ing-broccoli' && lot.made_at === '2026-07-02' && !lot.deleted_at);
+
+  assert.equal(result.merged, true);
+  assert.equal(broccoliLots.length, 1);
+  assert.equal(broccoliLots[0].initial_count, 5);
+  assert.equal(broccoliLots[0].remaining_count, 5);
+  assert.equal(broccoliLots[0].description, '고기 100g 물 20g 블랜더 30초');
 });
 
 test('lot decrement does not go below zero', () => {

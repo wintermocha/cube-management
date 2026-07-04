@@ -89,6 +89,21 @@ export function adjustCubeLotCount(lots, lotId, delta, updatedAt) {
   return { changed: Boolean(adjustedLot), lots: updatedLots, adjusted_lot: adjustedLot };
 }
 
+export function upsertCubeLotForDate(lots, nextLot) {
+  const found = lots.find((lot) => lot.ingredient_id === nextLot.ingredient_id && lot.made_at === nextLot.made_at && !lot.deleted_at);
+  if (!found) return { merged: false, lots: lots.concat(nextLot), lot: nextLot };
+  const mergedLot = {
+    ...found,
+    initial_count: Number(found.initial_count || 0) + Number(nextLot.initial_count || 0),
+    remaining_count: Number(found.remaining_count || 0) + Number(nextLot.remaining_count || 0),
+    grams_per_cube: nextLot.grams_per_cube ?? found.grams_per_cube,
+    storage_location: nextLot.description || nextLot.storage_location || found.storage_location || '',
+    description: nextLot.description || found.description || found.storage_location || '',
+    updated_at: nextLot.updated_at,
+  };
+  return { merged: true, lots: lots.map((lot) => lot.id === found.id ? mergedLot : lot), lot: mergedLot };
+}
+
 export function calculateForecast({ ingredients, lots, combinations, combinationItems, mealPlanSlots, startDate, days = 7 }) {
   const inventory = summarizeInventory(ingredients, lots);
   const stock = new Map(inventory.map((item) => [item.ingredient_id, item.current_count]));

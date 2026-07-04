@@ -28,6 +28,10 @@ export function wireAppEvents(handlers) {
     select.onpointerdown = (event) => event.stopPropagation();
     select.onchange = (event) => { event.stopPropagation(); handlers.onIngredientStatusChange(select.dataset.ingredientStatus, select.value); };
   });
+  document.querySelectorAll('[data-ingredient-category]').forEach((select) => {
+    select.onpointerdown = (event) => event.stopPropagation();
+    select.onchange = (event) => { event.stopPropagation(); handlers.onIngredientCategoryChange(select.dataset.ingredientCategory, select.value); };
+  });
   document.querySelectorAll('[data-edit-slot]').forEach((form) => {
     form.onchange = () => handlers.onSlotChange(form);
   });
