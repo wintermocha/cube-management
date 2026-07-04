@@ -8,8 +8,8 @@
     "domain:add": "node scripts/pages-domain.mjs add"
   },
   "devDependencies": {
+    "playwright": "^1.61.1",
     "wrangler": "^4.107.0"
   },
-  "dependencies": {},
   "type": "module"
 }

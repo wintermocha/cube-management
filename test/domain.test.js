@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seedData } from '../src/lib/seed.js';
-import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeCubeLotFromState } from '../src/lib/domain.js';
+import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState } from '../src/lib/domain.js';
 
 test('current stock severity follows PRD thresholds', () => {
   assert.equal(stockSeverity(4), 'ok');
@@ -29,6 +29,14 @@ test('forecast reports planned shortage separately from current severity', () =>
   assert.equal(beef.shortage, 1);
 });
 
+test('forecast multiplies combination needs by meal slot count', () => {
+  const data = seedData();
+  data.mealPlanSlots = [{ id: 'slot-double', date: '2026-07-03', meal_type: '점심', target_type: 'combination', combination_id: 'combo-beef-broccoli', cube_count: 2, status: 'planned' }];
+  const forecast = calculateForecast({ ingredients: data.ingredients, lots: data.cubeLots, combinations: data.combinations, combinationItems: data.combinationItems, mealPlanSlots: data.mealPlanSlots, startDate: '2026-07-03' });
+  assert.equal(forecast.find((item) => item.ingredient_id === 'ing-beef').needed, 2);
+  assert.equal(forecast.find((item) => item.ingredient_id === 'ing-rice').needed, 4);
+});
+
 test('AI parser auto-applies only low-risk add stock', () => {
   const data = seedData();
   assert.deepEqual(parseKoreanAddStock('소고기 큐브 6개 만들었어', data.ingredients), { type: 'add_stock', ingredient_id: 'ing-beef', ingredient_name: '소고기', quantity: 6, unit: 'cube' });
@@ -46,11 +54,14 @@ test('manual stock use consumes FEFO lots first', () => {
 
 test('deleted ingredients disappear and their stock is cleared', () => {
   const data = seedData();
+  data.mealPlanSlots.push({ id: 'slot-broccoli', date: '2026-07-07', meal_type: '점심', target_type: 'ingredient', ingredient_id: 'ing-broccoli', cube_count: 1, status: 'planned' });
   const result = removeIngredientFromState(data, 'ing-broccoli', '2026-07-04T00:00:00.000Z');
   assert.equal(result.removed, true);
   assert.equal(activeIngredients(result.state.ingredients).some((item) => item.id === 'ing-broccoli'), false);
   assert.equal(result.state.cubeLots.find((lot) => lot.id === 'lot-broccoli-1').remaining_count, 0);
   assert.equal(summarizeInventory(result.state.ingredients, result.state.cubeLots).some((item) => item.ingredient_id === 'ing-broccoli'), false);
+  assert.equal(result.state.combinationItems.some((item) => item.ingredient_id === 'ing-broccoli'), false);
+  assert.equal(result.state.mealPlanSlots.find((slot) => slot.id === 'slot-broccoli').status, 'cancelled');
 });
 
 test('deleted cube lots disappear from inventory while keeping ingredient', () => {
@@ -61,4 +72,15 @@ test('deleted cube lots disappear from inventory while keeping ingredient', () =
   assert.equal(broccoli.current_count, 0);
   assert.equal(broccoli.lots.length, 0);
   assert.equal(activeIngredients(result.state.ingredients).some((item) => item.id === 'ing-broccoli'), true);
+});
+
+test('current stock whole delete clears lots without deleting the ingredient', () => {
+  const data = seedData();
+  const result = removeStockForIngredientFromState(data, 'ing-broccoli', '2026-07-04T00:00:00.000Z');
+  const broccoli = summarizeInventory(result.state.ingredients, result.state.cubeLots).find((item) => item.ingredient_id === 'ing-broccoli');
+  assert.equal(result.removed, true);
+  assert.equal(result.clearedLotCount, 1);
+  assert.equal(broccoli.current_count, 0);
+  assert.equal(activeIngredients(result.state.ingredients).some((item) => item.id === 'ing-broccoli'), true);
+  assert.equal(result.state.combinationItems.some((item) => item.ingredient_id === 'ing-broccoli'), true);
 });

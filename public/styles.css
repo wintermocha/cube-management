@@ -157,7 +157,7 @@ small,
   transition: transform var(--motion-fast) var(--ease-enter);
 }
 
-.skip-link:focus {
+.skip-link:focus-visible {
   transform: translateY(0);
 }
 
@@ -394,7 +394,7 @@ small,
 
 .workspace-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-1);
   padding: var(--space-1);
   border-radius: var(--radius-card);
@@ -632,6 +632,25 @@ em {
   grid-column: 1 / -1;
 }
 
+.stock-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-raised);
+  padding: var(--space-2);
+}
+
+.stock-controls span {
+  color: var(--color-strong);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+
 .lot-box-list,
 .stock-description {
   grid-column: 1 / -1;
@@ -691,9 +710,18 @@ em {
   margin-bottom: var(--space-3);
 }
 
+.stock-add-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stock-add-form .field-full,
+.stock-add-form .button {
+  grid-column: 1 / -1;
+}
+
 .ingredient-card {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 1fr;
+  align-items: stretch;
 }
 
 .ingredient-card > div:first-child {
@@ -741,6 +769,67 @@ em {
 
 .item-management {
   margin-top: var(--space-2);
+}
+
+.status-field select {
+  min-height: 48px;
+}
+
+.swipe-shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  touch-action: pan-y;
+}
+
+.swipe-shell > .data-card {
+  position: relative;
+  z-index: 1;
+  transition: transform var(--motion-standard) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.swipe-shell.is-swiped > .data-card {
+  transform: translateX(-104px);
+}
+
+.swipe-action {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 100px;
+  min-height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-error);
+  color: var(--color-surface);
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+.swipe-shell.is-swiped .swipe-action {
+  z-index: 2;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.edit-card {
+  gap: var(--space-3);
+}
+
+.edit-card .field {
+  gap: var(--space-1);
+}
+
+.combo-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.combo-card .button {
+  width: 100%;
 }
 
 .meal-card b,
@@ -849,6 +938,10 @@ em {
     padding: var(--space-1);
   }
 
+  .tab-button span {
+    display: none;
+  }
+
   .metric {
     padding: var(--space-3);
   }
@@ -859,5 +952,10 @@ em {
 
   .section {
     margin-top: var(--space-8);
+  }
+
+  .stock-add-form,
+  .combo-items {
+    grid-template-columns: 1fr;
   }
 }

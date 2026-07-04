@@ -42,7 +42,23 @@ export function removeIngredientFromState(data, ingredientId, deletedAt) {
     if (item.id !== ingredientId) return item;
     return { ...item, status: 'cancelled', deleted_at: deletedAt, updated_at: deletedAt };
   });
-  return { removed: true, state: { ...data, ingredients, cubeLots }, ingredient, clearedLotCount };
+  const combinationItems = (data.combinationItems || []).filter((item) => item.ingredient_id !== ingredientId);
+  const mealPlanSlots = (data.mealPlanSlots || []).map((slot) => {
+    if (slot.target_type !== 'ingredient' || slot.ingredient_id !== ingredientId) return slot;
+    return { ...slot, status: 'cancelled', updated_at: deletedAt };
+  });
+  return { removed: true, state: { ...data, ingredients, cubeLots, combinationItems, mealPlanSlots }, ingredient, clearedLotCount };
+}
+
+export function removeStockForIngredientFromState(data, ingredientId, deletedAt) {
+  const ingredient = activeIngredients(data.ingredients).find((item) => item.id === ingredientId);
+  if (!ingredient) return { removed: false, state: data, ingredient: null, clearedLotCount: 0 };
+  const cubeLots = data.cubeLots.map((lot) => {
+    if (lot.ingredient_id !== ingredientId || lot.deleted_at) return lot;
+    return { ...lot, remaining_count: 0, deleted_at: deletedAt, updated_at: deletedAt };
+  });
+  const clearedLotCount = cubeLots.filter((lot) => lot.ingredient_id === ingredientId && lot.deleted_at === deletedAt).length;
+  return { removed: clearedLotCount > 0, state: { ...data, cubeLots }, ingredient, clearedLotCount };
 }
 
 export function removeCubeLotFromState(data, lotId, deletedAt) {
@@ -70,8 +86,9 @@ export function calculateForecast({ ingredients, lots, combinations, combination
     if (slot.target_type === 'ingredient') {
       addNeeded(needed, slot.ingredient_id, Number(slot.cube_count || 0));
     } else if (slot.target_type === 'combination') {
+      const multiplier = Number(slot.cube_count || 1);
       for (const item of comboItemsByCombo.get(slot.combination_id) || []) {
-        addNeeded(needed, item.ingredient_id, Number(item.cube_count || 0));
+        addNeeded(needed, item.ingredient_id, Number(item.cube_count || 0) * multiplier);
       }
     }
   }
