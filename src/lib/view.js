@@ -48,6 +48,17 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
     </main>`;
 }
 
+export function renderAuthRequiredHtml({ message, loginHref }) {
+  return `
+    <main id="main" class="app-shell auth-required-shell" data-auth-required>
+      <section class="auth-required-panel" role="alert" aria-labelledby="authRequiredTitle">
+        <h1 id="authRequiredTitle">로그인이 필요해요</h1>
+        <p>${text(message || '로그인 세션을 확인하지 못했어요. 다시 로그인해 주세요.')}</p>
+        <button class="button button-primary auth-required-action" type="button" data-auth-login data-login-href="${text(loginHref)}">확인</button>
+      </section>
+    </main>`;
+}
+
 function todayPanel({ inventory, state, weekStart }) {
   return `<section class="section section-tight" aria-labelledby="todayStockTitle">
     <div class="section-head">

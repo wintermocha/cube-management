@@ -26,7 +26,7 @@ export async function persistSharedState(state) {
   return response.json();
 }
 
-export function createSharedStateSync({ getState, setState, cacheKey, render, warn }) {
+export function createSharedStateSync({ getState, setState, cacheKey, render, warn, authRequired }) {
   let saving = false;
   let queued = false;
   async function flush() {
@@ -56,6 +56,8 @@ export function createSharedStateSync({ getState, setState, cacheKey, render, wa
           render();
           warn('다른 기기에서 먼저 저장된 내용이 있어 최신 데이터로 다시 불러왔어요.');
         }
+      } else if (isAuthRequired(error) && authRequired) {
+        authRequired(loadWarning(error));
       } else {
         warn('공유 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
       }
@@ -79,6 +81,10 @@ export function createSharedStateSync({ getState, setState, cacheKey, render, wa
         localStorage.setItem(cacheKey, JSON.stringify(shared));
         render();
       } catch (error) {
+        if (isAuthRequired(error) && authRequired) {
+          authRequired(loadWarning(error));
+          return;
+        }
         warn(loadWarning(error));
       }
     },
@@ -96,6 +102,10 @@ function loadWarning(error) {
   if (error?.status === 403) return '로그인한 이메일이 이 공유 가정의 멤버로 등록되어 있지 않아요.';
   if (error?.status === 404) return '공유 API를 찾지 못했어요. Cloudflare Pages dev 또는 배포 주소로 열어 주세요.';
   return '공유 데이터를 불러오지 못해 저장된 화면을 표시해요.';
+}
+
+function isAuthRequired(error) {
+  return error?.status === 401;
 }
 
 function authHeaders() {

@@ -340,6 +340,40 @@ small,
   color: var(--color-surface);
 }
 
+.auth-required-shell {
+  justify-content: center;
+}
+
+.auth-required-panel {
+  display: grid;
+  gap: var(--space-4);
+  justify-items: center;
+  padding: var(--space-10) 0;
+  text-align: center;
+}
+
+.auth-required-panel h1 {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 30px;
+}
+
+.auth-required-panel p {
+  max-width: 280px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 16px;
+  line-height: 24px;
+  word-break: keep-all;
+}
+
+.auth-required-action {
+  width: min(240px, 100%);
+  margin-top: var(--space-2);
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

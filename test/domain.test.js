@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { seedData } from '../src/lib/seed.js';
 import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from '../src/lib/domain.js';
 import { mealScheduleCalendar } from '../src/lib/meal-table-view.js';
-import { renderAppHtml } from '../src/lib/view.js';
+import { renderAppHtml, renderAuthRequiredHtml } from '../src/lib/view.js';
 
 test('current stock severity follows PRD thresholds', () => {
   assert.equal(stockSeverity(4), 'ok');
@@ -131,6 +131,21 @@ test('today tab shows inventory status and meal plan without edit controls', () 
   assert.match(emptyTodayHtml, /아직 재고가 없어요/);
   assert.match(emptyTodayHtml, /비어 있음/);
   assert.doesNotMatch(emptyTodayHtml, forbiddenTodayControls);
+});
+
+test('auth-required screen hides app content and offers one login action', () => {
+  const html = renderAuthRequiredHtml({
+    message: '로그인 세션을 확인하지 못했어요. 다시 로그인해 주세요.',
+    loginHref: 'https://jw-cube.taewooo.kim/',
+  });
+
+  assert.match(html, /data-auth-required/);
+  assert.match(html, /로그인이 필요해요/);
+  assert.match(html, /로그인 세션을 확인하지 못했어요/);
+  assert.match(html, /data-auth-login/);
+  assert.match(html, /data-login-href="https:\/\/jw-cube\.taewooo\.kim\/"/);
+  assert.match(html, />확인<\/button>/);
+  assert.doesNotMatch(html, /workspace-tabs|metrics-alerts|panel-today|현재 재고|식단표/);
 });
 
 test('AI parser auto-applies only low-risk add stock', () => {

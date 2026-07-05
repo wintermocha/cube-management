@@ -1,7 +1,7 @@
 import { seedData } from './lib/seed.js';
 import { DEFAULT_MEAL_TYPE, activeIngredients, summarizeInventory, calculateForecast, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from './lib/domain.js';
 import { wireAppEvents } from './lib/bindings.js';
-import { categoryOptions, label, renderAppHtml, statusLabels, statusOptions } from './lib/view.js';
+import { categoryOptions, label, renderAppHtml, renderAuthRequiredHtml, statusLabels, statusOptions } from './lib/view.js';
 import { createSharedStateSync } from './lib/api-state.js';
 
 const STORAGE_KEY = 'baby-food-cube-cloudflare-mvp';
@@ -11,7 +11,8 @@ let activeTab = loadActiveTab();
 let pendingIngredientDeleteId = null, pendingLotDeleteId = null, expandedStockId = null, expandedIngredientId = null;
 let lotFormDefaults = null;
 let comboBuilderIngredientIds = [];
-const sharedState = createSharedStateSync({ getState: () => state, setState: (next) => { state = next; }, cacheKey: STORAGE_KEY, render, warn: (message) => showToast(message, 'warning') });
+let authRequiredMessage = null;
+const sharedState = createSharedStateSync({ getState: () => state, setState: (next) => { state = next; }, cacheKey: STORAGE_KEY, render, warn: (message) => showToast(message, 'warning'), authRequired: showAuthRequired });
 
 function loadState() { const saved = localStorage.getItem(STORAGE_KEY); try { return saved ? JSON.parse(saved) : seedData(); } catch { localStorage.removeItem(STORAGE_KEY); return seedData(); } }
 function loadActiveTab() { const saved = localStorage.getItem(ACTIVE_TAB_KEY); return TAB_IDS.includes(saved) ? saved : 'today'; }
@@ -27,6 +28,11 @@ function logEvent(type, payload, before = null, after = null, source = 'manual')
 }
 
 function render() {
+  if (authRequiredMessage) {
+    document.querySelector('#app').innerHTML = renderAuthRequiredHtml({ message: authRequiredMessage, loginHref: loginHref() });
+    wireAuthRequiredEvents();
+    return;
+  }
   const weekStart = document.querySelector('#weekStart')?.value || '2026-07-03';
   const ingredients = activeIngredients(state.ingredients);
   const inventory = summarizeInventory(ingredients, state.cubeLots);
@@ -56,6 +62,13 @@ function render() {
     onIngredientToggle: toggleIngredientCard,
   });
 }
+function wireAuthRequiredEvents() {
+  document.querySelector('[data-auth-login]')?.addEventListener('click', (event) => {
+    const target = event.currentTarget;
+    window.location.assign(target.dataset.loginHref || loginHref());
+  });
+}
+function loginHref() { return window.location.href; }
 function handleTabChange(tabId) {
   if (!TAB_IDS.includes(tabId)) tabId = 'today';
   activeTab = tabId;
@@ -254,4 +267,5 @@ function addLot({ ingredientId, quantity, madeAt = localDate(), description = ''
   return logEvent('stock_add', { lot: result.lot, merged: result.merged }, beforeLots, result.lots, source);
 }
 function showToast(message, tone = 'info') { const toast = document.querySelector('#toast'); if (toast) { toast.dataset.tone = tone; toast.textContent = message; } }
+function showAuthRequired(message) { authRequiredMessage = message; render(); }
 render(); sharedState.load();

@@ -27,6 +27,26 @@ test('shared state load explains when the API is missing from the current server
   assert.deepEqual(warnings, ['공유 API를 찾지 못했어요. Cloudflare Pages dev 또는 배포 주소로 열어 주세요.']);
 });
 
+test('shared state load switches to auth-required handling when the session is expired', async () => {
+  Object.defineProperty(globalThis, 'location', { value: { hostname: 'jw-cube.taewooo.kim' }, configurable: true });
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
+  const warnings = [];
+  const authMessages = [];
+  const sync = createSharedStateSync({
+    getState: () => ({}),
+    setState: () => {},
+    cacheKey: 'test-shared-state',
+    render: () => {},
+    warn: (message) => warnings.push(message),
+    authRequired: (message) => authMessages.push(message),
+  });
+
+  await sync.load();
+
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(authMessages, ['로그인 세션을 확인하지 못했어요. 다시 로그인해 주세요.']);
+});
+
 test('shared state load explains when the logged-in email is not a household member', async () => {
   Object.defineProperty(globalThis, 'location', { value: { hostname: 'jw-cube.taewooo.kim' }, configurable: true });
   globalThis.fetch = async () => new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 });
