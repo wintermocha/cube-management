@@ -304,11 +304,15 @@ small,
 }
 
 .toast {
+  flex-shrink: 0;
   min-height: 0;
   border-radius: var(--space-2);
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .app-toast:empty {

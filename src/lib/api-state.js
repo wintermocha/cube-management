@@ -2,7 +2,7 @@ const DEV_ACTOR_EMAIL = 'caregiver-a@example.com';
 
 export async function fetchSharedState() {
   const response = await fetch('/api/state', { headers: authHeaders() });
-  if (!response.ok) throw new Error(`state_fetch_failed:${response.status}`);
+  if (!response.ok) throw stateError('state_fetch_failed', response.status);
   return response.json();
 }
 
@@ -78,11 +78,24 @@ export function createSharedStateSync({ getState, setState, cacheKey, render, wa
         setState(shared);
         localStorage.setItem(cacheKey, JSON.stringify(shared));
         render();
-      } catch {
-        warn('공유 데이터를 불러오지 못해 저장된 화면을 표시해요.');
+      } catch (error) {
+        warn(loadWarning(error));
       }
     },
   };
+}
+
+function stateError(code, status) {
+  const error = new Error(`${code}:${status}`);
+  error.status = status;
+  return error;
+}
+
+function loadWarning(error) {
+  if (error?.status === 401) return '로그인 세션을 확인하지 못했어요. 다시 로그인해 주세요.';
+  if (error?.status === 403) return '로그인한 이메일이 이 공유 가정의 멤버로 등록되어 있지 않아요.';
+  if (error?.status === 404) return '공유 API를 찾지 못했어요. Cloudflare Pages dev 또는 배포 주소로 열어 주세요.';
+  return '공유 데이터를 불러오지 못해 저장된 화면을 표시해요.';
 }
 
 function authHeaders() {
