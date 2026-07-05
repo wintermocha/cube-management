@@ -3,6 +3,7 @@ import { DEFAULT_MEAL_TYPE, activeIngredients, summarizeInventory, calculateFore
 import { wireAppEvents } from './lib/bindings.js';
 import { categoryOptions, label, renderAppHtml, renderAuthRequiredHtml, statusLabels, statusOptions } from './lib/view.js';
 import { createSharedStateSync } from './lib/api-state.js';
+import { loginHref } from './lib/auth-navigation.js';
 
 const STORAGE_KEY = 'baby-food-cube-cloudflare-mvp';
 const ACTIVE_TAB_KEY = `${STORAGE_KEY}:active-tab`, TAB_IDS = ['today', 'inventory', 'items', 'meals', 'records'];
@@ -68,7 +69,6 @@ function wireAuthRequiredEvents() {
     window.location.assign(target.dataset.loginHref || loginHref());
   });
 }
-function loginHref() { return window.location.href; }
 function handleTabChange(tabId) {
   if (!TAB_IDS.includes(tabId)) tabId = 'today';
   activeTab = tabId;

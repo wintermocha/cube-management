@@ -2,6 +2,7 @@
   "scripts": {
     "dev": "npm run build && wrangler pages dev dist --port 8788 --ip 127.0.0.1",
     "test": "node --test",
+    "test:e2e": "playwright test",
     "build": "node scripts/build.mjs",
     "deploy": "npm run build && wrangler pages deploy dist --project-name baby-food-cube-management",
     "domain:list": "node scripts/pages-domain.mjs list",
