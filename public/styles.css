@@ -452,12 +452,15 @@ small,
 }
 
 .bottom-tabs {
-  position: relative;
-  z-index: 2;
+  position: fixed;
+  z-index: 5;
+  left: 50%;
+  bottom: max(var(--space-4), env(safe-area-inset-bottom));
+  transform: translateX(-50%);
   flex: 0 0 auto;
   align-self: center;
-  width: min(860px, 100%);
-  margin: var(--space-4) auto 0;
+  width: min(860px, calc(100% - (var(--space-5) * 2)));
+  margin: 0;
   box-shadow: var(--shadow-elevated);
 }
 
@@ -517,7 +520,7 @@ small,
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: var(--space-3);
+  padding-bottom: calc(var(--space-12) + var(--space-10) + max(var(--space-4), env(safe-area-inset-bottom)));
 }
 
 .section-head {
@@ -1351,7 +1354,7 @@ em {
   }
 
   .app-shell {
-    padding: var(--space-4) var(--space-5) calc(var(--space-12) + 80px);
+    padding: var(--space-4) var(--space-5);
   }
 
   .section-head {
