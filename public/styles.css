@@ -1357,9 +1357,17 @@ em {
   }
 
   .meal-calendar {
-    grid-template-columns: repeat(7, minmax(148px, 1fr));
-    margin-inline: calc(var(--space-5) * -1);
-    padding-inline: var(--space-5);
+    grid-template-columns: 1fr;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .meal-day-card {
+    min-height: 0;
+  }
+
+  .meal-day-drop {
+    min-height: 0;
   }
 
   .stock-add-inline-row {
