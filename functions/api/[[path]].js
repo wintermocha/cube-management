@@ -100,6 +100,7 @@ export function normalizeStateForD1(body, householdId) {
   const names = ['ingredients','cubeLots','combinations','combinationItems','mealPlanSlots','events'];
   if (!names.every((name) => Array.isArray(body[name]))) return { ok: false };
   const state = {
+    childProfile: normalizeChildProfile(body.childProfile, householdId),
     ingredients: rows(body.ingredients.filter((row) => !row.deleted_at && row.status !== 'cancelled'), ['id','name','category','status','notes','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
     cubeLots: rows(body.cubeLots.filter((row) => !row.deleted_at), ['id','ingredient_id','made_at','expires_at','initial_count','remaining_count','grams_per_cube','storage_location','description','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId, storage_location: row.description || row.storage_location || null })),
     combinations: rows(body.combinations, ['id','name','stage','texture','notes','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
@@ -107,6 +108,7 @@ export function normalizeStateForD1(body, householdId) {
     mealPlanSlots: rows(body.mealPlanSlots, ['id','date','meal_type','target_type','combination_id','ingredient_id','cube_count','status','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
     events: rows(body.events, ['id','actor_email','source','type','payload_json','before_json','after_json','created_at','undo_event_id']).map((row) => ({ ...row, household_id: householdId })),
   };
+  if (!state.childProfile?.id || !state.childProfile.display_name) return { ok: false };
   if (!state.ingredients.length || !state.combinations.length) return { ok: false };
   if (state.ingredients.some((row) => !row.id || !row.name || !['not_tried','planned','testing','tolerated','suspected_reaction'].includes(row.status))) return { ok: false };
   return { ok: true, syncVersion, state };
@@ -118,7 +120,9 @@ function buildReplaceStateStatements(db, householdId, state, nextVersion) {
     db.prepare('DELETE FROM combinations WHERE household_id=?').bind(householdId),
     db.prepare('DELETE FROM cube_lots WHERE household_id=?').bind(householdId),
     db.prepare('DELETE FROM ingredients WHERE household_id=?').bind(householdId),
+    db.prepare('DELETE FROM child_profiles WHERE household_id=?').bind(householdId),
   ];
+  pushRows(statements, db, 'INSERT INTO child_profiles VALUES (?,?,?,?,?,?,?)', [state.childProfile], ['id','household_id','display_name','birth_date','notes','created_at','updated_at']);
   pushRows(statements, db, 'INSERT INTO ingredients VALUES (?,?,?,?,?,?,?,?)', state.ingredients, ['id','household_id','name','category','status','notes','created_at','updated_at']);
   pushRows(statements, db, 'INSERT INTO cube_lots VALUES (?,?,?,?,?,?,?,?,?,?,?)', state.cubeLots, ['id','household_id','ingredient_id','made_at','expires_at','initial_count','remaining_count','grams_per_cube','storage_location','created_at','updated_at']);
   pushRows(statements, db, 'INSERT INTO combinations VALUES (?,?,?,?,?,?,?,?)', state.combinations, ['id','household_id','name','stage','texture','notes','created_at','updated_at']);
@@ -133,6 +137,21 @@ function pushRows(statements, db, sql, rowsToInsert, fields) {
 }
 function rows(items, fields) {
   return items.filter(isObject).map((item) => pick(item, fields));
+}
+function normalizeChildProfile(profile, householdId) {
+  if (!isObject(profile)) return null;
+  const timestamp = now();
+  const row = pick(profile, ['id','display_name','birth_date','notes','created_at','updated_at']);
+  return {
+    ...row,
+    id: row.id || `child-${householdId}`,
+    household_id: householdId,
+    display_name: String(row.display_name || '').trim(),
+    birth_date: row.birth_date || null,
+    notes: row.notes || '',
+    created_at: row.created_at || timestamp,
+    updated_at: row.updated_at || timestamp,
+  };
 }
 function pick(item, fields) {
   return Object.fromEntries(fields.map((field) => [field, item[field] ?? null]));

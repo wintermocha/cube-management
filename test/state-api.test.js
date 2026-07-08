@@ -29,6 +29,20 @@ test('state payload normalization maps lot description to D1 storage field', () 
   assert.equal(result.state.cubeLots[0].storage_location, 'A칸 앞쪽');
 });
 
+test('state payload normalization preserves child profile edits', () => {
+  const input = seedData();
+  input.syncVersion = 3;
+  input.childProfile = { ...input.childProfile, display_name: '주원', birth_date: '2026-01-02', notes: '입자감 천천히' };
+
+  const result = normalizeStateForD1(input, 'home');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state.childProfile.household_id, 'home');
+  assert.equal(result.state.childProfile.display_name, '주원');
+  assert.equal(result.state.childProfile.birth_date, '2026-01-02');
+  assert.equal(result.state.childProfile.notes, '입자감 천천히');
+});
+
 test('state payload normalization rejects invalid payloads', () => {
   const input = { household: { id: 'home' } };
 

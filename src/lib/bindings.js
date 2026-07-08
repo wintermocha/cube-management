@@ -2,9 +2,28 @@ export function wireAppEvents(handlers) {
   document.querySelectorAll('[data-tab]').forEach((tab) => {
     tab.onclick = () => handlers.onTabChange(tab.dataset.tab);
   });
+  document.querySelectorAll('[data-action-tab]').forEach((button) => {
+    button.onclick = () => handlers.onActionTab(button.dataset.actionTab);
+  });
+  document.querySelectorAll('[data-settings-tab]').forEach((button) => {
+    button.onclick = () => handlers.onSettingsTab();
+  });
+  document.querySelectorAll('[data-ingredient-filter]').forEach((button) => {
+    button.onclick = () => handlers.onIngredientFilter(button.dataset.ingredientFilter);
+  });
   document.querySelector('#weekStart')?.addEventListener('change', handlers.onWeekChange);
   document.querySelector('#lotForm')?.addEventListener('submit', handlers.onLotSubmit);
   document.querySelector('#ingredientForm')?.addEventListener('submit', handlers.onIngredientSubmit);
+  document.querySelector('#profileForm')?.addEventListener('submit', handlers.onProfileSubmit);
+  document.querySelectorAll('[data-profile-save]').forEach((button) => {
+    button.onclick = (event) => {
+      event.preventDefault();
+      handlers.onProfileSubmit(button.closest('form'));
+    };
+  });
+  document.querySelectorAll('[data-profile-photo]').forEach((button) => {
+    button.onclick = () => handlers.onProfilePhoto();
+  });
   document.querySelectorAll('[data-swipe-delete]').forEach(setupSwipeDelete);
   document.querySelectorAll('[data-add-ingredient]').forEach((button) => {
     button.onclick = () => handlers.onQuickAdd(button.dataset.addIngredient, Number(button.dataset.addQuantity || 1));
@@ -35,6 +54,12 @@ export function wireAppEvents(handlers) {
   document.querySelector('#comboBuilderForm')?.addEventListener('submit', (event) => { event.preventDefault(); handlers.onComboBuilderSubmit(event.currentTarget); });
   document.querySelectorAll('[data-drag-ingredient]').forEach((element) => setupDragSource(element, { type: 'ingredient', id: element.dataset.dragIngredient }));
   document.querySelectorAll('[data-drag-combo]').forEach((element) => setupDragSource(element, { type: 'combination', id: element.dataset.dragCombo }));
+  document.querySelectorAll('[data-add-combo-ingredient]').forEach((button) => {
+    button.onclick = () => handlers.onComboIngredientDrop(button.dataset.addComboIngredient);
+  });
+  document.querySelectorAll('[data-add-combo-meal]').forEach((button) => {
+    button.onclick = () => handlers.onComboAddToMeal(button.dataset.addComboMeal, button.dataset.addComboDate);
+  });
   document.querySelectorAll('[data-combo-drop-zone]').forEach((zone) => setupDropZone(zone, 'ingredient', (payload) => handlers.onComboIngredientDrop(payload.id)));
   document.querySelectorAll('[data-meal-drop-date]').forEach((zone) => setupDropZone(zone, 'combination', (payload) => handlers.onMealComboDrop(payload.id, zone.dataset.mealDropDate)));
   document.querySelectorAll('[data-builder-remove]').forEach((button) => {

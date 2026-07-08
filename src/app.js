@@ -1,17 +1,18 @@
 import { seedData } from './lib/seed.js';
 import { DEFAULT_MEAL_TYPE, activeIngredients, summarizeInventory, calculateForecast, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from './lib/domain.js';
 import { wireAppEvents } from './lib/bindings.js';
-import { categoryOptions, label, renderAppHtml, renderAuthRequiredHtml, statusLabels, statusOptions } from './lib/view.js';
+import { categoryOptions, label, renderAppHtml, renderAuthRequiredHtml, stageOptions, statusLabels, statusOptions } from './lib/view.js';
 import { createSharedStateSync } from './lib/api-state.js';
 import { loginHref } from './lib/auth-navigation.js';
 
 const STORAGE_KEY = 'baby-food-cube-cloudflare-mvp';
-const ACTIVE_TAB_KEY = `${STORAGE_KEY}:active-tab`, TAB_IDS = ['today', 'inventory', 'items', 'meals', 'records'];
+const ACTIVE_TAB_KEY = `${STORAGE_KEY}:active-tab`, TAB_IDS = ['today', 'inventory', 'items', 'meals', 'records', 'settings'];
 let state = loadState();
 let activeTab = loadActiveTab();
 let pendingIngredientDeleteId = null, pendingLotDeleteId = null, expandedStockId = null, expandedIngredientId = null;
 let lotFormDefaults = null;
 let comboBuilderIngredientIds = [];
+let activeIngredientFilter = 'all';
 let authRequiredMessage = null;
 const sharedState = createSharedStateSync({ getState: () => state, setState: (next) => { state = next; }, cacheKey: STORAGE_KEY, render, warn: (message) => showToast(message, 'warning'), authRequired: showAuthRequired });
 
@@ -42,9 +43,11 @@ function render() {
   const warnings = inventory.filter((item) => item.severity === 'warn');
   const shortages = forecast.filter((item) => item.shortage > 0);
   const nextMealCount = state.mealPlanSlots.filter((slot) => slot.status !== 'cancelled').length;
-  document.querySelector('#app').innerHTML = renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate: localDate(), lotFormDefaults, comboBuilderIngredientIds });
+  document.querySelector('#app').innerHTML = renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate: localDate(), lotFormDefaults, comboBuilderIngredientIds, activeIngredientFilter });
   wireAppEvents({
     onTabChange: handleTabChange,
+    onActionTab: handleActionTab,
+    onSettingsTab: () => handleTabChange('settings'),
     onWeekChange: render,
     onLotSubmit: handleLotSubmit,
     onIngredientSubmit: handleIngredientSubmit,
@@ -58,7 +61,11 @@ function render() {
     onComboIngredientDrop: handleComboIngredientDrop,
     onComboBuilderRemove: handleComboBuilderRemove,
     onComboBuilderSubmit: handleComboBuilderSubmit,
+    onComboAddToMeal: handleComboAddToMeal,
     onMealComboDrop: handleMealComboDrop,
+    onIngredientFilter: handleIngredientFilter,
+    onProfileSubmit: handleProfileSubmit,
+    onProfilePhoto: handleProfilePhoto,
     onStockToggle: toggleStockDescription,
     onIngredientToggle: toggleIngredientCard,
   });
@@ -73,6 +80,18 @@ function handleTabChange(tabId) {
   if (!TAB_IDS.includes(tabId)) tabId = 'today';
   activeTab = tabId;
   saveActiveTab(tabId);
+  pendingIngredientDeleteId = null; pendingLotDeleteId = null; expandedStockId = null; expandedIngredientId = null;
+  render();
+}
+function handleActionTab(tabId) {
+  handleTabChange(tabId);
+}
+function handleIngredientFilter(filter) {
+  const allowed = ['all', ...statusOptions];
+  if (!allowed.includes(filter)) return;
+  activeIngredientFilter = filter;
+  activeTab = 'items';
+  saveActiveTab(activeTab);
   pendingIngredientDeleteId = null; pendingLotDeleteId = null; expandedStockId = null; expandedIngredientId = null;
   render();
 }
@@ -227,15 +246,30 @@ function handleComboBuilderSubmit(form) {
   const generatedName = selectedIngredients.map((ingredient) => ingredient.name).join(' ');
   const name = String(fd.get('name') || generatedName).trim();
   if (!name) { showToast('조합명을 입력해 주세요.', 'warning'); return; }
+  const stage = String(fd.get('stage') || '중기');
+  if (!stageOptions.includes(stage)) { showToast('이유식 단계를 선택해 주세요.', 'warning'); return; }
+  const items = [];
+  for (const ingredient of selectedIngredients) {
+    const cubeCount = Number(fd.get(`cube_count_${ingredient.id}`) || 1);
+    if (!Number.isInteger(cubeCount) || cubeCount < 1 || cubeCount > 12) {
+      showToast(`${ingredient.name} 큐브 수는 1개에서 12개 사이로 입력해 주세요.`, 'warning');
+      return;
+    }
+    items.push({ combination_id: null, ingredient_id: ingredient.id, cube_count: cubeCount });
+  }
   const timestamp = now();
-  const combination = { id: id('combo'), household_id: 'home', name, stage: '', texture: '', notes: '', created_at: timestamp, updated_at: timestamp };
-  const items = selectedIngredients.map((ingredient) => ({ combination_id: combination.id, ingredient_id: ingredient.id, cube_count: 1 }));
+  const combination = { id: id('combo'), household_id: 'home', name, stage, texture: '', notes: '', created_at: timestamp, updated_at: timestamp };
+  const combinationItems = items.map((item) => ({ ...item, combination_id: combination.id }));
   const before = { combinations: state.combinations, combinationItems: state.combinationItems };
-  state = { ...state, combinations: state.combinations.concat(combination), combinationItems: state.combinationItems.concat(items) };
+  state = { ...state, combinations: state.combinations.concat(combination), combinationItems: state.combinationItems.concat(combinationItems) };
   comboBuilderIngredientIds = [];
-  logEvent('combo_create', { combination_id: combination.id, name }, before, { combination, items }, 'manual');
+  logEvent('combo_create', { combination_id: combination.id, name, stage }, before, { combination, items: combinationItems }, 'manual');
   saveState();
   showToast('조합을 저장했어요.', 'success');
+}
+function handleComboAddToMeal(comboId, date) {
+  const targetDate = date || document.querySelector('#weekStart')?.value || localDate();
+  handleMealComboDrop(comboId, targetDate);
 }
 function handleMealComboDrop(comboId, date) {
   const combination = state.combinations.find((combo) => combo.id === comboId);
@@ -248,6 +282,35 @@ function handleMealComboDrop(comboId, date) {
   logEvent('meal_slot_create', { slot_id: slot.id, combination_id: comboId, date }, beforeSlots, state.mealPlanSlots, 'manual');
   saveState();
   showToast(`${date}에 ${combination.name} 조합을 넣었어요.`, 'success');
+}
+function handleProfileSubmit(eventOrForm) {
+  eventOrForm?.preventDefault?.();
+  const form = eventOrForm?.currentTarget || eventOrForm;
+  if (!(form instanceof HTMLFormElement)) { showToast('프로필 폼을 찾지 못했어요.', 'warning'); return; }
+  const fd = new FormData(form);
+  const displayName = String(fd.get('display_name') || '').trim();
+  const birthDate = String(fd.get('birth_date') || '').trim();
+  const notes = String(fd.get('notes') || '').trim();
+  if (!displayName) { showToast('표시 이름을 입력해 주세요.', 'warning'); return; }
+  if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) { showToast('생일 형식을 확인해 주세요.', 'warning'); return; }
+  const timestamp = now();
+  const before = state.childProfile || {};
+  const after = {
+    id: before.id || id('child'),
+    household_id: before.household_id || 'home',
+    display_name: displayName,
+    birth_date: birthDate,
+    notes,
+    created_at: before.created_at || timestamp,
+    updated_at: timestamp,
+  };
+  state = { ...state, childProfile: after };
+  logEvent('profile_update', { child_id: after.id, display_name: displayName }, before, after, 'manual');
+  saveState();
+  showToast('프로필을 저장했어요.', 'success');
+}
+function handleProfilePhoto() {
+  showToast('사진 업로드는 아직 준비 중이에요. 이름과 메모는 바로 저장돼요.', 'warning');
 }
 function parseOptionalPositiveNumber(value) {
   const raw = String(value ?? '').trim();

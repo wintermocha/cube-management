@@ -86,7 +86,7 @@ test('today tab shows inventory status and meal plan without edit controls', () 
   const inventory = summarizeInventory(ingredients, data.cubeLots);
   const weekStart = '2026-07-03';
   const forecast = calculateForecast({ ingredients, lots: data.cubeLots, combinations: data.combinations, combinationItems: data.combinationItems, mealPlanSlots: data.mealPlanSlots, startDate: weekStart });
-  const forbiddenTodayControls = /data-add-ingredient|data-lot-increment|data-lot-decrement|data-delete-stock|data-delete-lot|data-stock-toggle|data-edit-slot|data-edit-combo|data-meal-drop-date|data-combo-drop-zone|data-drag-combo|data-drag-ingredient|<form\b|<input\b|<select\b|<button\b/;
+  const forbiddenTodayControls = /data-add-ingredient|data-lot-increment|data-lot-decrement|data-delete-stock|data-delete-lot|data-stock-toggle|data-edit-slot|data-edit-combo|data-meal-drop-date|data-combo-drop-zone|data-drag-combo|data-drag-ingredient|<form\b|<input\b|<select\b/;
   const html = renderAppHtml({
     activeTab: 'today',
     state: data,
@@ -131,6 +131,53 @@ test('today tab shows inventory status and meal plan without edit controls', () 
   assert.match(emptyTodayHtml, /아직 재고가 없어요/);
   assert.match(emptyTodayHtml, /비어 있음/);
   assert.doesNotMatch(emptyTodayHtml, forbiddenTodayControls);
+});
+
+test('Stitch Baby Food design exposes profile, filters, and touch fallbacks', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const weekStart = '2026-07-03';
+  const forecast = calculateForecast({ ingredients, lots: data.cubeLots, combinations: data.combinations, combinationItems: data.combinationItems, mealPlanSlots: data.mealPlanSlots, startDate: weekStart });
+  const base = {
+    state: data,
+    ingredients,
+    inventory,
+    critical: inventory.filter((item) => item.severity === 'error'),
+    warnings: inventory.filter((item) => item.severity === 'warn'),
+    shortages: forecast.filter((item) => item.shortage > 0),
+    nextMealCount: data.mealPlanSlots.length,
+    weekStart,
+    expandedStockId: null,
+    expandedIngredientId: null,
+    todayDate: weekStart,
+    lotFormDefaults: null,
+    activeIngredientFilter: 'testing',
+  };
+
+  const todayHtml = renderAppHtml({ ...base, activeTab: 'today' });
+  assert.match(todayHtml, /class="top-app-bar"/);
+  assert.match(todayHtml, /data-settings-tab/);
+  assert.match(todayHtml, /data-action-tab="meals"/);
+  assert.match(todayHtml, /profile-avatar\.svg/);
+
+  const itemsHtml = renderAppHtml({ ...base, activeTab: 'items' });
+  const itemsPanelHtml = itemsHtml.match(/<div id="panel-items"[\s\S]*?(?=<div id="panel-meals")/)?.[0] ?? '';
+  assert.match(itemsPanelHtml, /data-ingredient-filter="testing"/);
+  assert.match(itemsPanelHtml, /is-selected/);
+  assert.match(itemsPanelHtml, /브로콜리/);
+  assert.doesNotMatch(itemsPanelHtml, /쌀미음/);
+
+  const mealsHtml = renderAppHtml({ ...base, activeTab: 'meals', comboBuilderIngredientIds: ['ing-beef'] });
+  assert.match(mealsHtml, /name="stage"/);
+  assert.match(mealsHtml, /name="cube_count_ing-beef"/);
+  assert.match(mealsHtml, /data-add-combo-meal="combo-beef-broccoli"/);
+  assert.match(mealsHtml, /empty-bowl\.svg/);
+
+  const settingsHtml = renderAppHtml({ ...base, activeTab: 'settings' });
+  assert.match(settingsHtml, /data-profile-form/);
+  assert.match(settingsHtml, /name="display_name"/);
+  assert.match(settingsHtml, /사진 변경/);
 });
 
 test('auth-required screen hides app content and offers one login action', () => {

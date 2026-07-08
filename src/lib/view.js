@@ -3,19 +3,28 @@ import { mealScheduleCalendar } from './meal-table-view.js';
 
 export const statusLabels = { not_tried: '미시도', planned: '예정', testing: '테스트 중', tolerated: '적응 완료', suspected_reaction: '반응 의심', cancelled: '삭제됨' };
 export const statusOptions = ['not_tried', 'planned', 'testing', 'tolerated', 'suspected_reaction'];
-export const categoryOptions = ['고기', '채소', '과일'];
+export const categoryOptions = ['단백질', '채소', '곡류', '과일', '고기'];
+export const stageOptions = ['초기', '중기', '후기', '완료기'];
 
 const severityLabels = { ok: '충분', warn: '주의', error: '긴급' };
-const eventLabels = { stock_add: '재고 추가', stock_increment: '재고 증가', stock_decrement: '재고 차감', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', ingredient_category_update: '카테고리 변경', meal_slot_update: '식단 수정', meal_slot_create: '식단 추가', combo_update: '조합 수정', combo_create: '조합 추가' };
+const eventLabels = { stock_add: '재고 추가', stock_increment: '재고 증가', stock_decrement: '재고 차감', stock_clear: '현재 재고 삭제', cube_lot_delete: '재고 삭제', ingredient_create: '품목 추가', ingredient_delete: '품목 삭제', ingredient_status_update: '상태 변경', ingredient_category_update: '카테고리 변경', meal_slot_update: '식단 수정', meal_slot_create: '식단 추가', combo_update: '조합 수정', combo_create: '조합 추가', profile_update: '프로필 수정' };
 const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-const workspaceTabs = [{ id: 'today', label: '오늘', detail: '할 일' }, { id: 'inventory', label: '재고', detail: '현재' }, { id: 'items', label: '품목', detail: '관리' }, { id: 'meals', label: '식단', detail: '계획' }, { id: 'records', label: '기록', detail: '변경' }];
+const workspaceTabs = [
+  { id: 'today', label: '오늘', detail: '체크', icon: 'today' },
+  { id: 'inventory', label: '큐브', detail: '재고', icon: 'inventory_2' },
+  { id: 'meals', label: '식단', detail: '계획', icon: 'calendar_month' },
+  { id: 'items', label: '품목', detail: '관리', icon: 'egg_alt' },
+  { id: 'records', label: '기록', detail: '변경', icon: 'history' },
+];
 const workspaceCopy = {
-  today: { eyebrow: '우선순위', title: '오늘 확인할 것', body: '긴급, 주의, 부족 예정 큐브만 빠르게 확인해요.' },
-  inventory: { eyebrow: '냉동실', title: '현재 재고', body: '재고 수량과 큐브 무게를 바로 조정해요.' },
-  items: { eyebrow: '품목 관리', title: '품목 추가와 상태', body: '적응 상태를 바꾸고 안 쓰는 품목은 왼쪽으로 밀어 삭제해요.' },
-  meals: { eyebrow: '7일 계획', title: '식단표', body: '앞으로 쓸 큐브 수량을 기준으로 부족분을 계산해요.' },
-  records: { eyebrow: '변경 기록', title: '최근 기록', body: '직접 반영된 변경만 남겨요.' },
+  today: { eyebrow: 'Nurture Nest', title: '오늘 확인할 이유식', body: '긴급 재고와 이번 주 식단을 먼저 보여드려요.' },
+  inventory: { eyebrow: 'Freezer Cubes', title: '큐브 재고', body: '날짜별 큐브 수량과 무게를 안전하게 조정해요.' },
+  items: { eyebrow: 'Ingredients', title: '품목과 적응 상태', body: '테스트 중인 재료와 적응 완료 재료를 빠르게 나눠 봐요.' },
+  meals: { eyebrow: 'Meal Plan', title: '식단과 조합', body: '저장한 조합을 드래그하거나 버튼으로 이번 주에 배치해요.' },
+  records: { eyebrow: 'History', title: '최근 변경 기록', body: '재고, 품목, 식단 변경만 따뜻한 카드로 남겨요.' },
+  settings: { eyebrow: 'Profile', title: '아기 프로필', body: '이름, 생일, 메모를 앱의 첫 화면과 기록에 반영해요.' },
 };
+const filterOptions = [{ id: 'all', label: '전체' }, ...statusOptions.map((status) => ({ id: status, label: statusLabels[status] }))];
 
 export function text(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => escapeMap[char]);
@@ -25,11 +34,19 @@ export function label(map, value) {
   return map[value] || text(value);
 }
 
-export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate, lotFormDefaults, comboBuilderIngredientIds = [] }) {
+export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate, lotFormDefaults, comboBuilderIngredientIds = [], activeIngredientFilter = 'all' }) {
   const currentCopy = workspaceCopy[activeTab] || workspaceCopy.today;
+  const childName = childDisplayName(state);
   return `
     <main id="main" class="app-shell app-shell-${text(activeTab)}">
       <div id="toast" class="toast app-toast" aria-live="polite"></div>
+      <header class="top-app-bar">
+        <div class="profile-mark" aria-hidden="true"><img src="/profile-avatar.svg" alt=""></div>
+        <div class="top-app-title"><span>${text(childName)}의 이유식</span><strong>Baby Food Cube Manager</strong></div>
+        ${activeTab === 'settings'
+          ? `<button class="icon-button" type="button" aria-label="설정 닫기" data-action-tab="today">${materialIcon('close')}</button>`
+          : `<button class="icon-button" type="button" aria-label="설정" data-settings-tab>${materialIcon('settings')}</button>`}
+      </header>
       <section class="workspace-hero" aria-labelledby="workspaceTitle">
         <p class="eyebrow">${text(currentCopy.eyebrow)}</p>
         <h1 id="workspaceTitle">${text(currentCopy.title)}</h1>
@@ -41,10 +58,11 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
       </div>
       ${tabPanel('today', activeTab, todayPanel({ inventory, state, weekStart }))}
       ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId, todayDate, lotFormDefaults }))}
-      ${tabPanel('items', activeTab, itemsPanel({ ingredients, expandedIngredientId }))}
+      ${tabPanel('items', activeTab, itemsPanel({ ingredients, expandedIngredientId, activeIngredientFilter }))}
       ${tabPanel('meals', activeTab, mealsPanel({ state, weekStart, comboBuilderIngredientIds }))}
       ${tabPanel('records', activeTab, recordsPanel({ state }))}
-      <nav class="workspace-tabs bottom-tabs" role="tablist" aria-label="기능 분류">${workspaceTabs.map((tab) => tabButton(tab, activeTab)).join('')}</nav>
+      ${tabPanel('settings', activeTab, settingsPanel({ state }))}
+      ${activeTab === 'settings' ? '' : `<nav class="workspace-tabs bottom-tabs" role="tablist" aria-label="기능 분류">${workspaceTabs.map((tab) => tabButton(tab, activeTab)).join('')}</nav>`}
     </main>`;
 }
 
@@ -52,11 +70,16 @@ export function renderAuthRequiredHtml({ message, loginHref }) {
   return `
     <main id="main" class="app-shell auth-required-shell" data-auth-required>
       <section class="auth-required-panel" role="alert" aria-labelledby="authRequiredTitle">
+        <div class="auth-mark">${materialIcon('lock')}</div>
         <h1 id="authRequiredTitle">로그인이 필요해요</h1>
         <p>${text(message || '로그인 세션을 확인하지 못했어요. 다시 로그인해 주세요.')}</p>
         <button class="button button-primary auth-required-action" type="button" data-auth-login data-login-href="${text(loginHref)}">확인</button>
       </section>
     </main>`;
+}
+
+function childDisplayName(state) {
+  return String(state.childProfile?.display_name || '아기').trim() || '아기';
 }
 
 function todayPanel({ inventory, state, weekStart }) {
@@ -67,8 +90,9 @@ function todayPanel({ inventory, state, weekStart }) {
     <div class="card-grid inventory-grid today-readonly-grid">${inventory.map(readonlyStockCard).join('') || emptyState('아직 재고가 없어요.')}</div>
   </section>
   <section class="section" aria-labelledby="todayMealTitle">
-    <div class="section-head">
+    <div class="section-head section-head-inline">
       <div><p class="eyebrow">7일 계획</p><h2 id="todayMealTitle">식단표</h2></div>
+      <button class="button button-secondary button-compact" type="button" data-action-tab="meals">${materialIcon('calendar_month')}식단 편집</button>
     </div>
     ${mealScheduleCalendar(state, weekStart, { readonly: true })}
   </section>`;
@@ -101,18 +125,20 @@ function inventoryPanel({ ingredients, inventory, expandedStockId, todayDate, lo
   </section>`;
 }
 
-function itemsPanel({ ingredients, expandedIngredientId }) {
+function itemsPanel({ ingredients, expandedIngredientId, activeIngredientFilter }) {
+  const filtered = activeIngredientFilter === 'all' ? ingredients : ingredients.filter((item) => item.status === activeIngredientFilter);
   return `<section class="section section-tight" aria-labelledby="ingredientTitle" data-item-management-panel>
     <div class="section-head">
       <div><p class="eyebrow">품목 관리</p><h2 id="ingredientTitle">품목 추가/상태 변경</h2></div>
       <p>상태 기준: 각 품목의 저장된 status 값이에요. 예정은 planned, 테스트 중은 testing, 적응 완료는 tolerated로 표시돼요.</p>
     </div>
+    <div class="filter-strip" role="list" aria-label="품목 상태 필터">${filterOptions.map((option) => filterChip(option, activeIngredientFilter)).join('')}</div>
     <form id="ingredientForm" class="form-card ingredient-form">
       <label class="field"><span>새 품목</span><input id="ingredientName" name="name" autocomplete="off" placeholder="예: 당근"></label>
       <label class="field"><span>카테고리</span><select id="ingredientCategory" name="category">${categoryOptions.map((category) => `<option value="${text(category)}">${text(category)}</option>`).join('')}</select></label>
       <button class="button button-primary" type="submit">품목 추가</button>
     </form>
-    <div class="card-grid compact-grid item-management">${ingredients.map((item) => ingredientCard(item, expandedIngredientId)).join('') || emptyState('등록된 품목이 없어요.')}</div>
+    <div class="card-grid compact-grid item-management">${filtered.map((item) => ingredientCard(item, expandedIngredientId)).join('') || emptyState('이 상태의 품목이 아직 없어요.')}</div>
   </section>`;
 }
 
@@ -122,7 +148,8 @@ function mealsPanel({ state, weekStart, comboBuilderIngredientIds }) {
       <div><p class="eyebrow">7일 계획</p><h2 id="mealTitle">식단표</h2></div>
       <label class="date-control">시작일 <input id="weekStart" value="${text(weekStart)}" type="date"></label>
     </div>
-    <div class="combo-library">${state.combinations.map((combo) => comboCard(combo, state)).join('') || emptyState('저장된 조합이 없어요.')}</div>
+    ${recommendationPanel(state)}
+    <div class="combo-library">${state.combinations.map((combo) => comboCard(combo, state, weekStart)).join('') || emptyState('저장된 조합이 없어요.')}</div>
     ${mealScheduleCalendar(state, weekStart)}
   </section>
   <section class="section" aria-labelledby="comboTitle">
@@ -142,9 +169,28 @@ function recordsPanel({ state }) {
   </section>`;
 }
 
+function settingsPanel({ state }) {
+  const profile = state.childProfile || {};
+  return `<section class="section section-tight settings-screen" aria-labelledby="settingsTitle">
+    <div class="settings-profile">
+      <div class="profile-preview" aria-hidden="true"><img src="/profile-avatar.svg" alt=""></div>
+      <div><p class="eyebrow">Child Profile</p><h2 id="settingsTitle">${text(childDisplayName(state))}</h2><span>이 정보는 이 기기 저장소에 저장돼요.</span></div>
+    </div>
+    <form id="profileForm" class="form-card profile-form" data-profile-form>
+      <label class="field"><span>표시 이름</span><input name="display_name" autocomplete="off" value="${text(profile.display_name || '')}" placeholder="예: 주원"></label>
+      <label class="field"><span>생일</span><input name="birth_date" type="date" value="${text(profile.birth_date || '')}"></label>
+      <label class="field profile-notes"><span>메모</span><textarea name="notes" rows="4" placeholder="알레르기 의심, 선호 식감 등을 적어두세요.">${text(profile.notes || '')}</textarea></label>
+      <div class="profile-actions">
+        <button class="button button-secondary" type="button" data-profile-photo>${materialIcon('photo_camera')}사진 변경</button>
+        <button class="button button-primary" type="submit" data-profile-save>${materialIcon('save')}저장</button>
+      </div>
+    </form>
+  </section>`;
+}
+
 function tabButton(tab, activeTab) {
   const selected = tab.id === activeTab;
-  return `<button id="tab-${tab.id}" class="tab-button${selected ? ' is-active' : ''}" type="button" role="tab" aria-label="${text(tab.label)}" aria-selected="${selected}" aria-controls="panel-${tab.id}" data-tab="${tab.id}"><b>${text(tab.label)}</b><span>${text(tab.detail)}</span></button>`;
+  return `<button id="tab-${tab.id}" class="tab-button${selected ? ' is-active' : ''}" type="button" role="tab" aria-label="${text(tab.label)}" aria-selected="${selected}" aria-controls="panel-${tab.id}" data-tab="${tab.id}">${materialIcon(tab.icon)}<b>${text(tab.label)}</b><span>${text(tab.detail)}</span></button>`;
 }
 
 function tabPanel(id, activeTab, content) {
@@ -210,12 +256,13 @@ function ingredientCard(item, expandedIngredientId) {
   </div>`;
 }
 
-function comboCard(combo, state) {
+function comboCard(combo, state, weekStart) {
   const comboItems = state.combinationItems.filter((item) => item.combination_id === combo.id);
   const itemSummary = comboItems.map((item) => `${text(state.ingredients.find((ingredient) => ingredient.id === item.ingredient_id)?.name || '알 수 없음')} ${text(item.cube_count)}개`).join(' · ');
   return `<article class="combo-box" draggable="true" data-drag-combo="${text(combo.id)}">
-    <b>${text(combo.name)}</b>
+    <div class="combo-box-head"><b>${text(combo.name)}</b><span>${text(combo.stage || '단계 미지정')}</span></div>
     <span>${itemSummary || '구성 품목 없음'}</span>
+    <button class="button button-secondary button-compact" type="button" data-add-combo-meal="${text(combo.id)}" data-add-combo-date="${text(weekStart)}">${materialIcon('add_circle')}식단에 추가</button>
   </article>`;
 }
 
@@ -224,6 +271,10 @@ function comboBuilder(state, selectedIds) {
   const selected = selectedIds.map((ingredientId) => ingredients.find((item) => item.id === ingredientId)).filter(Boolean);
   return `<form id="comboBuilderForm" class="combo-builder">
     <label class="field combo-name-field"><span>조합명</span><input name="name" autocomplete="off" placeholder="예: 소고기 브로콜리 죽"></label>
+    <fieldset class="stage-selector">
+      <legend>이유식 단계</legend>
+      ${stageOptions.map((stage, index) => `<label><input type="radio" name="stage" value="${text(stage)}"${index === 1 ? ' checked' : ''}><span>${text(stage)}</span></label>`).join('')}
+    </fieldset>
     <div class="ingredient-palette">${ingredients.map((ingredient) => ingredientToken(ingredient)).join('') || emptyState('등록된 품목이 없어요.')}</div>
     <div class="combo-drop-zone${selected.length ? ' has-items' : ''}" data-combo-drop-zone>
       <div class="builder-selection">${selected.map(selectedIngredientToken).join('') || '<span class="meal-slot-empty">품목을 여기에 넣어요</span>'}</div>
@@ -233,11 +284,15 @@ function comboBuilder(state, selectedIds) {
 }
 
 function ingredientToken(ingredient) {
-  return `<button class="ingredient-token" type="button" draggable="true" data-drag-ingredient="${text(ingredient.id)}"><b>${text(ingredient.name)}</b><span>${text(ingredient.category || '카테고리 없음')}</span></button>`;
+  return `<button class="ingredient-token" type="button" draggable="true" data-drag-ingredient="${text(ingredient.id)}" data-add-combo-ingredient="${text(ingredient.id)}">${materialIcon(categoryIcon(ingredient.category))}<b>${text(ingredient.name)}</b><span>${text(ingredient.category || '카테고리 없음')}</span></button>`;
 }
 
 function selectedIngredientToken(ingredient) {
-  return `<button class="selected-token" type="button" data-builder-remove="${text(ingredient.id)}">${text(ingredient.name)}</button>`;
+  return `<div class="selected-token">
+    <button type="button" data-builder-remove="${text(ingredient.id)}" aria-label="${text(ingredient.name)} 제거">${materialIcon('close')}</button>
+    <span>${text(ingredient.name)}</span>
+    <label><span class="sr-only">${text(ingredient.name)} 큐브 수</span><input name="cube_count_${text(ingredient.id)}" type="number" min="1" max="12" inputmode="numeric" value="1"></label>
+  </div>`;
 }
 
 function eventCard(event) {
@@ -246,6 +301,32 @@ function eventCard(event) {
 
 function emptyState(copy) {
   return `<p class="empty">${text(copy)}</p>`;
+}
+
+function recommendationPanel(state) {
+  const firstCombo = state.combinations[0];
+  const summary = firstCombo ? `${firstCombo.name} 조합을 이번 주에 바로 배치할 수 있어요.` : '조합을 저장하면 식단 추천이 여기 표시돼요.';
+  return `<article class="recommendation-panel">
+    <img src="/empty-bowl.svg" alt="" aria-hidden="true">
+    <div><p class="eyebrow">Recommendation</p><b>${text(summary)}</b><span>현재 재고와 이번 주 계획을 기준으로 보여드려요.</span></div>
+  </article>`;
+}
+
+function filterChip(option, activeFilter) {
+  const selected = option.id === activeFilter;
+  return `<button class="filter-chip${selected ? ' is-selected' : ''}" type="button" role="listitem" aria-pressed="${selected}" data-ingredient-filter="${text(option.id)}">${text(option.label)}</button>`;
+}
+
+function categoryIcon(category) {
+  if (/단백질|고기|소고기/.test(String(category))) return 'restaurant';
+  if (/곡|쌀|미음/.test(String(category))) return 'rice_bowl';
+  if (/과일/.test(String(category))) return 'nutrition';
+  if (/채소/.test(String(category))) return 'eco';
+  return 'local_dining';
+}
+
+function materialIcon(name) {
+  return `<span class="material-symbols-outlined" aria-hidden="true">${text(name)}</span>`;
 }
 
 function trashIcon() {

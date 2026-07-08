@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-label="Empty baby food bowl">
+  <rect x="18" y="14" width="124" height="86" rx="28" fill="#fff1ee"/>
+  <path d="M38 58c4 25 22 40 42 40s38-15 42-40H38Z" fill="#ffffff" stroke="#dac1bd" stroke-width="4"/>
+  <path d="M52 63h56" stroke="#ff9e8f" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="63" cy="41" r="8" fill="#c0ecda"/>
+  <circle cx="92" cy="36" r="6" fill="#ffb4a8"/>
+  <path d="M111 28l18-12" stroke="#94483d" stroke-width="5" stroke-linecap="round"/>
+  <path d="M44 101h72" stroke="#dac1bd" stroke-width="4" stroke-linecap="round"/>
+</svg>
