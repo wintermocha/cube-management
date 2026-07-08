@@ -178,6 +178,11 @@ test('Stitch Baby Food design exposes profile, filters, and touch fallbacks', ()
   assert.match(settingsHtml, /data-profile-form/);
   assert.match(settingsHtml, /name="display_name"/);
   assert.match(settingsHtml, /사진 변경/);
+  const settingsPanelTag = settingsHtml.match(/<div id="panel-settings"[^>]*>/)?.[0] ?? '';
+  assert.match(settingsPanelTag, /role="region"/);
+  assert.match(settingsPanelTag, /aria-labelledby="settingsTitle"/);
+  assert.doesNotMatch(settingsPanelTag, /role="tabpanel"/);
+  assert.doesNotMatch(settingsPanelTag, /aria-labelledby="tab-settings"/);
 });
 
 test('auth-required screen hides app content and offers one login action', () => {

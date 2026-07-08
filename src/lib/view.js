@@ -194,6 +194,9 @@ function tabButton(tab, activeTab) {
 }
 
 function tabPanel(id, activeTab, content) {
+  if (id === 'settings') {
+    return `<div id="panel-${id}" class="tab-panel" role="region" aria-labelledby="settingsTitle"${activeTab === id ? '' : ' hidden'}>${content}</div>`;
+  }
   return `<div id="panel-${id}" class="tab-panel" role="tabpanel" aria-labelledby="tab-${id}"${activeTab === id ? '' : ' hidden'}>${content}</div>`;
 }
 
