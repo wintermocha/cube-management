@@ -30,6 +30,7 @@ function logEvent(type, payload, before = null, after = null, source = 'manual')
 }
 
 function render() {
+  const scrollSnapshot = captureActivePanelScroll();
   if (authRequiredMessage) {
     document.querySelector('#app').innerHTML = renderAuthRequiredHtml({ message: authRequiredMessage, loginHref: loginHref() });
     wireAuthRequiredEvents();
@@ -69,6 +70,18 @@ function render() {
     onStockToggle: toggleStockDescription,
     onIngredientToggle: toggleIngredientCard,
   });
+  restoreActivePanelScroll(scrollSnapshot);
+}
+function captureActivePanelScroll() {
+  const panel = document.querySelector(`#panel-${activeTab}`);
+  return panel instanceof HTMLElement ? { id: panel.id, scrollTop: panel.scrollTop } : null;
+}
+function restoreActivePanelScroll(snapshot) {
+  if (!snapshot) return;
+  const panel = document.getElementById(snapshot.id);
+  if (!(panel instanceof HTMLElement)) return;
+  const maxScrollTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
+  panel.scrollTop = Math.min(snapshot.scrollTop, maxScrollTop);
 }
 function wireAuthRequiredEvents() {
   document.querySelector('[data-auth-login]')?.addEventListener('click', (event) => {
