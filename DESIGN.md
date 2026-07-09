@@ -51,13 +51,14 @@ Korean text should use `word-break: keep-all`; do not scale font size with viewp
 - `shadow-soft`: `0 4px 20px rgba(92, 83, 81, 0.06)`.
 - `shadow-glass`: `0 8px 32px rgba(92, 83, 81, 0.05)`.
 - `shadow-float`: `0 12px 28px rgba(148, 72, 61, 0.18)`.
+- `shadow-dock`: `0 -8px 24px rgba(92, 83, 81, 0.08)` for the opaque bottom navigation edge.
 
 Use borders sparingly and tint them warm. Raised cards use warm shadow plus tonal fill, not hard gray outlines.
 
 ## 5. Component Contract
 
 - **Top app bar:** sticky-feeling app chrome with baby/profile visual identity, child/product title, and settings icon.
-- **Bottom navigation:** five visible tabs only: Today, Cubes, Plan, Ingredients, History. Settings is reached from the app bar.
+- **Bottom navigation:** five visible tabs only: Today, Cubes, Plan, Ingredients, History. Settings is reached from the app bar. The menu docks to the full viewport bottom as an opaque rectangular Cream Tray Low bar with no floating gap, rounded outer frame, or glass blur; tabs stay centered within the app width while the bar itself covers the entire bottom edge.
 - **Today:** readonly dashboard with stock alert cards, current inventory, and meal-plan preview. It may include navigation CTAs but must not expose stock edit/delete/drag controls.
 - **Inventory:** add stock form plus per-ingredient cards. Expanded cards reveal date lots with increment, decrement, and delete controls.
 - **Ingredients:** add ingredient form, status/category edit controls, swipe delete, and status filters for all/not tried/planned/testing/tolerated/suspected reaction.

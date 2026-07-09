@@ -37,10 +37,11 @@
   --radius-panel: 22px;
   --radius-control: 14px;
   --radius-pill: 9999px;
-  --bottom-tabs-clearance: 128px;
+  --bottom-tabs-clearance: 88px;
   --shadow-soft: 0 4px 20px rgba(92, 83, 81, 0.06);
   --shadow-glass: 0 8px 32px rgba(92, 83, 81, 0.05);
   --shadow-float: 0 12px 28px rgba(148, 72, 61, 0.18);
+  --shadow-dock: 0 -8px 24px rgba(92, 83, 81, 0.08);
   --motion-fast: 150ms;
   --motion-standard: 240ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
@@ -342,7 +343,7 @@ small,
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: calc(var(--bottom-tabs-clearance) + max(var(--space-4), env(safe-area-inset-bottom)));
+  padding-bottom: calc(var(--bottom-tabs-clearance) + env(safe-area-inset-bottom));
 }
 
 .section {
@@ -627,9 +628,25 @@ small,
 
 .inventory-card {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto 44px;
   align-items: center;
   gap: var(--space-3);
+}
+
+.readonly-inventory-card {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.inventory-card > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inventory-card > div span,
+.inventory-card strong,
+.inventory-card em {
+  white-space: nowrap;
 }
 
 .icon-tile {
@@ -1220,23 +1237,25 @@ small,
 
 .workspace-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 152px));
+  justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-1);
-  border: 1px solid rgba(218, 193, 189, 0.72);
-  border-radius: 24px;
-  background: rgba(255, 241, 238, 0.96);
-  backdrop-filter: blur(16px);
+  padding: var(--space-1) var(--space-1) max(var(--space-1), env(safe-area-inset-bottom));
+  border: 0;
+  border-top: 1px solid rgba(218, 193, 189, 0.72);
+  border-radius: 0;
+  background: var(--color-surface-low);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .bottom-tabs {
   position: fixed;
   z-index: 10;
-  left: 50%;
-  bottom: max(var(--space-4), env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(760px, calc(100% - (var(--space-5) * 2)));
-  box-shadow: var(--shadow-glass);
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  box-shadow: var(--shadow-dock);
 }
 
 .tab-button {
@@ -1408,8 +1427,12 @@ small,
   }
 
   .inventory-card {
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto 40px;
     gap: var(--space-2);
+  }
+
+  .readonly-inventory-card {
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .icon-tile {
