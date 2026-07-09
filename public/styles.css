@@ -341,6 +341,7 @@ small,
 .tab-panel:not([hidden]) {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-bottom: calc(var(--bottom-tabs-clearance) + env(safe-area-inset-bottom));
@@ -796,9 +797,10 @@ small,
 
 .filter-strip {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
-  overflow-x: auto;
+  overflow-x: visible;
   padding-bottom: var(--space-1);
 }
 
@@ -820,9 +822,9 @@ small,
 
 .ingredient-card {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
+  align-items: stretch;
 }
 
 .ingredient-summary {
@@ -832,13 +834,27 @@ small,
   align-items: center;
 }
 
+.ingredient-summary em {
+  width: fit-content;
+  border-radius: var(--radius-pill);
+  background: var(--color-sage-wash);
+  color: var(--color-sage);
+  padding: 3px var(--space-3);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
 .ingredient-detail {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--space-3);
+  border: 1px solid rgba(218, 193, 189, 0.68);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-low);
+  padding: var(--space-3);
 }
 
 .ingredient-card.is-expanded .ingredient-toggle,
@@ -1107,6 +1123,11 @@ small,
   padding-bottom: var(--space-1);
 }
 
+.meal-calendar-readonly {
+  grid-template-columns: 1fr;
+  overflow-x: visible;
+}
+
 .meal-day-card {
   display: grid;
   align-content: start;
@@ -1163,9 +1184,21 @@ small,
 
 .record-card {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.record-card b {
+  color: var(--color-ink);
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.record-card small {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .settings-screen {

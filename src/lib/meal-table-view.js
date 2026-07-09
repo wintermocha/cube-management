@@ -7,7 +7,7 @@ function text(value) {
 
 export function mealScheduleCalendar(state, weekStart, { readonly = false } = {}) {
   const days = Array.from({ length: 7 }, (_, index) => makeDay(weekStart, index));
-  return `<div class="meal-calendar" aria-label="식단 달력">
+  return `<div class="meal-calendar${readonly ? ' meal-calendar-readonly' : ''}" aria-label="식단 달력">
     ${days.map((day) => dayCard(day, state, readonly)).join('')}
   </div>`;
 }

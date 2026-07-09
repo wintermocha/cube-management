@@ -59,13 +59,14 @@ Use borders sparingly and tint them warm. Raised cards use warm shadow plus tona
 
 - **Top app bar:** sticky-feeling app chrome with baby/profile visual identity, child/product title, and settings icon.
 - **Bottom navigation:** five visible tabs only: Today, Cubes, Plan, Ingredients, History. Settings is reached from the app bar. The menu docks to the full viewport bottom as an opaque rectangular Cream Tray Low bar with no floating gap, rounded outer frame, or glass blur; tabs stay centered within the app width while the bar itself covers the entire bottom edge.
-- **Today:** readonly dashboard with stock alert cards, current inventory, and meal-plan preview. It may include navigation CTAs but must not expose stock edit/delete/drag controls.
+- **Today:** readonly dashboard with stock alert cards, current inventory, and meal-plan preview. The readonly meal-plan preview stacks within the panel and must not introduce horizontal page or panel wobble. It may include navigation CTAs but must not expose stock edit/delete/drag controls.
 - **Inventory:** add stock form plus per-ingredient cards. Expanded cards reveal date lots with increment, decrement, and delete controls.
-- **Ingredients:** add ingredient form, status/category edit controls, swipe delete, and status filters for all/not tried/planned/testing/tolerated/suspected reaction.
+- **Ingredients:** add ingredient form, status/category edit controls, swipe delete, and status filters for all/not tried/planned/testing/tolerated/suspected reaction. Status filters wrap instead of forcing page-level horizontal motion. Expanded item detail stays inside the ingredient card as a warm grouped control panel.
 - **Plan:** week date input, combination cards, deterministic recommendation panel, drag/drop calendar, and explicit `식단에 추가` buttons for touch users.
 - **Combination builder:** stage selector plus per-ingredient cube-count fields. Saved combinations persist selected stage and each ingredient count.
 - **Settings/Profile:** child display name, birthday, and notes edit real `childProfile` state. The `사진 변경` button is a visible placeholder and explains that upload is not ready.
 - **Records/History:** first-class event-history screen with user-facing cards, not developer-looking logs.
+- **Workspace summary:** the large Today-style hero and alert metrics appear only where they support the task context. Plan, Ingredients, and Records start directly with their task content instead of repeating the Today summary block.
 - **Auth required:** warm panel with one primary `확인` action and no app content behind it.
 
 ## 6. Existing App Parity

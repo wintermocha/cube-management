@@ -37,6 +37,7 @@ export function label(map, value) {
 export function renderAppHtml({ activeTab, state, ingredients, inventory, critical, warnings, shortages, nextMealCount, weekStart, expandedStockId, expandedIngredientId, todayDate, lotFormDefaults, comboBuilderIngredientIds = [], activeIngredientFilter = 'all' }) {
   const currentCopy = workspaceCopy[activeTab] || workspaceCopy.today;
   const childName = childDisplayName(state);
+  const showWorkspaceSummary = !['meals', 'items', 'records'].includes(activeTab);
   return `
     <main id="main" class="app-shell app-shell-${text(activeTab)}">
       <div id="toast" class="toast app-toast" aria-live="polite"></div>
@@ -47,7 +48,7 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
           ? `<button class="icon-button" type="button" aria-label="설정 닫기" data-action-tab="today">${materialIcon('close')}</button>`
           : `<button class="icon-button" type="button" aria-label="설정" data-settings-tab>${materialIcon('settings')}</button>`}
       </header>
-      <section class="workspace-hero" aria-labelledby="workspaceTitle">
+      ${showWorkspaceSummary ? `<section class="workspace-hero" aria-labelledby="workspaceTitle">
         <p class="eyebrow">${text(currentCopy.eyebrow)}</p>
         <h1 id="workspaceTitle">${text(currentCopy.title)}</h1>
         <p>${text(currentCopy.body)}</p>
@@ -55,7 +56,7 @@ export function renderAppHtml({ activeTab, state, ingredients, inventory, critic
       <div class="metrics metrics-alerts" aria-label="요약 지표">
         ${metricTile('긴급', `${critical.length}건`, critical.length ? '바로 확인 필요' : '현재 없음', critical.length ? 'error' : 'success')}
         ${metricTile('주의', `${warnings.length}건`, warnings.length ? '재고 낮음' : '안정적', warnings.length ? 'warning' : 'success')}${metricTile('부족 예정', `${shortages.length}건`, `${nextMealCount}개 식단 반영`, shortages.length ? 'error' : 'success')}
-      </div>
+      </div>` : ''}
       ${tabPanel('today', activeTab, todayPanel({ inventory, state, weekStart }))}
       ${tabPanel('inventory', activeTab, inventoryPanel({ ingredients, inventory, expandedStockId, todayDate, lotFormDefaults }))}
       ${tabPanel('items', activeTab, itemsPanel({ ingredients, expandedIngredientId, activeIngredientFilter }))}
