@@ -1,7 +1,7 @@
 const DEV_ACTOR_EMAIL = 'caregiver-a@example.com';
 
 export async function fetchSharedState() {
-  const response = await fetch('/api/state', { headers: authHeaders() });
+  const response = await fetch('/api/state', { credentials: 'include', headers: authHeaders() });
   if (!response.ok) throw stateError('state_fetch_failed', response.status);
   return response.json();
 }
@@ -9,6 +9,7 @@ export async function fetchSharedState() {
 export async function persistSharedState(state) {
   const response = await fetch('/api/state', {
     method: 'PUT',
+    credentials: 'include',
     headers: { ...authHeaders(), 'content-type': 'application/json' },
     body: JSON.stringify(state),
   });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSharedStateSync, fetchSharedState } from '../src/lib/api-state.js';
+import { createSharedStateSync, fetchSharedState, persistSharedState } from '../src/lib/api-state.js';
 
 const originalFetch = globalThis.fetch;
 const originalLocation = globalThis.location;
@@ -75,4 +75,18 @@ test('local shared state requests include the development identity header', asyn
   await fetchSharedState();
 
   assert.equal(headers['x-authenticated-user-email'], 'caregiver-a@example.com');
+});
+
+test('shared state requests carry Access cookies through session-renewal redirects', async () => {
+  Object.defineProperty(globalThis, 'location', { value: { hostname: 'jw-cube.taewooo.kim' }, configurable: true });
+  const requests = [];
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init);
+    return Response.json({ syncVersion: 1 });
+  };
+
+  await fetchSharedState();
+  await persistSharedState({ syncVersion: 1 });
+
+  assert.deepEqual(requests.map((request) => request.credentials), ['include', 'include']);
 });
