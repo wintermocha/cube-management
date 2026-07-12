@@ -16,7 +16,8 @@ The first screen is the working app, not a landing page. Cards should feel like 
 - **Warm Clay Border** (`#dac1bd`) — card borders and segmented controls.
 - **Cocoa Ink** (`#211a19`) — primary text.
 - **Cocoa Soft Text** (`#544340`) — body text and metadata.
-- **Muted Clay** (`#87726f`) — helper text and inactive icons.
+- **Muted Clay** (`#87726f`) — inactive icons and large decorative labels only.
+- **Muted Clay Text** (`#765f5c`) — normal-size helper text; preserves at least 4.5:1 contrast on the app's tinted surfaces.
 - **Deep Coral Primary** (`#94483d`) — primary CTA and strong icon buttons.
 - **Soft Coral Active** (`#ff9e8f`) — active tabs and selected controls.
 - **Coral Wash** (`#ffdad4`) — light primary containers.
@@ -32,10 +33,12 @@ Coral is the only primary action color. Sage means available or healthy. Amber m
 
 ## 3. Typography & Icons
 
-- **Headings:** `"Plus Jakarta Sans"` at 600 or 700.
-- **Body and labels:** `"Be Vietnam Pro"` at 400, 500, 600, or 700.
-- **Fallbacks:** `"Noto Sans KR"`, `system-ui`, `sans-serif`.
-- **Icons:** Google Material Symbols Outlined for app bars, tab icons, and compact controls.
+Use the platform UI font stack and inline SVG icons so first paint never waits on a third-party font host.
+
+- **Headings:** the platform UI font stack at 600 or 700.
+- **Body and labels:** the platform UI font stack at 400, 500, 600, or 700.
+- **Fallbacks:** `"Apple SD Gothic Neo"`, `"Noto Sans KR"`, `sans-serif`.
+- **Icons:** inline current-color SVGs for app bars, tab icons, and compact controls.
 - **Numerals:** use tabular numerals for cube counts, grams, and dates.
 
 Korean text should use `word-break: keep-all`; do not scale font size with viewport width; letter spacing remains `0`.
@@ -58,7 +61,7 @@ Use borders sparingly and tint them warm. Raised cards use warm shadow plus tona
 ## 5. Component Contract
 
 - **Top app bar:** sticky-feeling app chrome with baby/profile visual identity, child/product title, and settings icon.
-- **Bottom navigation:** five visible tabs only: Today, Cubes, Plan, Ingredients, History. Settings is reached from the app bar. The menu docks to the full viewport bottom as an opaque rectangular Cream Tray Low bar with no floating gap, rounded outer frame, or glass blur; tabs stay centered within the app width while the bar itself covers the entire bottom edge.
+- **Bottom navigation:** five visible tabs only: Today, Cubes, Plan, Ingredients, History. Settings is reached from the app bar. The opaque Cream Tray Low dock reaches the viewport edge, while its five controls remain constrained to the active app-shell width. Every scroll panel reserves the dock clearance and applies matching scroll padding so focused content is never hidden behind it.
 - **Today:** readonly dashboard with stock alert cards, current inventory, and meal-plan preview. The readonly meal-plan preview stacks within the panel and must not introduce horizontal page or panel wobble. It may include navigation CTAs but must not expose stock edit/delete/drag controls.
 - **Inventory:** add stock form plus per-ingredient cards. Expanded cards reveal date lots with increment, decrement, and delete controls.
 - **Ingredients:** add ingredient form, status/category edit controls, swipe delete, and status filters for all/not tried/planned/testing/tolerated/suspected reaction. Status filters wrap instead of forcing page-level horizontal motion. Expanded item detail stays inside the ingredient card as a warm grouped control panel.
@@ -68,6 +71,16 @@ Use borders sparingly and tint them warm. Raised cards use warm shadow plus tona
 - **Records/History:** first-class event-history screen with user-facing cards, not developer-looking logs.
 - **Workspace summary:** the large Today-style hero and alert metrics appear only where they support the task context. Plan, Ingredients, and Records start directly with their task content instead of repeating the Today summary block.
 - **Auth required:** warm panel with one primary `확인` action and no app content behind it.
+
+### 5.1 Interaction and status primitives
+
+- **Compact controls:** stock expand, ingredient expand, lot `+`/`−`, token remove, and trash controls use the existing icon language but keep a `48px × 48px` hit area. Their rest, hover, keyboard-focus, active, disabled, and destructive-armed states must remain visible without relying on color alone. Native button appearance must not leak through these controls.
+- **Focus:** every interactive element uses the same two-layer visible focus indicator: a surface separator plus a Deep Coral outer ring. The ring must retain at least 3:1 contrast against adjacent light surfaces and Soft Coral Active controls.
+- **Inline error:** invalid fields receive a Status Red border and a nearby Status Red message in a light Red Wash container. Error text is never placeholder-only and fields retain `aria-invalid` semantics.
+- **Sync status:** pending, saved, failed, and conflict messages use a compact rounded status surface. Pending uses Cocoa text, saved uses Sage, and failed/conflict use Status Red. Text or an icon accompanies the color.
+- **Destructive confirmation:** delete confirmation uses a Status Red Wash panel with explicit cancel and destructive actions. The armed destructive control keeps its 48px target and a visible pressed/armed treatment.
+- **Responsive containment:** controls and filter groups wrap inside their card. The Cubes add form, lot controls, bottom dock, and cards must contain at `375`, `390`, `759`, `760`, `768`, `800`, and `1280` CSS pixels. At `200%` zoom the app has no `320px` page floor and no global horizontal overflow; compact targets stay at least `48px`.
+- **Korean wrapping:** Korean copy retains `word-break: keep-all` with balanced/pretty wrapping for headings and explanatory copy. User-entered long strings may break as an emergency containment measure, without splitting ordinary Korean words into semantic orphans. A native select keeps its full option text and semantics while an overlong selected value uses an intentional single-line ellipsis with a separate visible arrow.
 
 ## 6. Existing App Parity
 
@@ -87,7 +100,7 @@ The redesign must keep these current app behaviors accessible:
 
 - Baby/profile top app bar and settings entry.
 - Settings/profile edit screen.
-- Material Symbols icon language.
+- Material-inspired inline SVG icon language.
 - Ingredient status filters.
 - Combination stage selection and per-ingredient cube counts.
 - Deterministic recommendation panel.

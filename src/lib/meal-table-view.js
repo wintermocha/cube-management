@@ -5,10 +5,10 @@ function text(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => escapeMap[char]);
 }
 
-export function mealScheduleCalendar(state, weekStart, { readonly = false } = {}) {
+export function mealScheduleCalendar(state, weekStart, { readonly = false, pending = false } = {}) {
   const days = Array.from({ length: 7 }, (_, index) => makeDay(weekStart, index));
   return `<div class="meal-calendar${readonly ? ' meal-calendar-readonly' : ''}" aria-label="식단 달력">
-    ${days.map((day) => dayCard(day, state, readonly)).join('')}
+    ${days.map((day) => dayCard(day, state, readonly || pending)).join('')}
   </div>`;
 }
 

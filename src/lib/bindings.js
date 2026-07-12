@@ -1,6 +1,47 @@
+const TAB_FOCUS_FALLBACKS = Object.freeze({
+  today: '#todayStockTitle',
+  inventory: '#stockAddTitle',
+  items: '#ingredientTitle',
+  meals: '#mealTitle',
+  records: '#activityTitle',
+  settings: '#settingsTitle',
+});
+
+export function focusFallbackSelector(activeTab) {
+  return TAB_FOCUS_FALLBACKS[activeTab] || '#main';
+}
+
+export function nextComboRemovalFocusId(selectedIds, removedId) {
+  const removedIndex = selectedIds.indexOf(removedId);
+  if (removedIndex < 0) return selectedIds[0] || null;
+  return selectedIds[removedIndex + 1] || selectedIds[removedIndex - 1] || null;
+}
+
+export function idSelector(value) {
+  const identifier = Array.from(String(value), (character, index) => {
+    const codePoint = character.codePointAt(0);
+    const isAsciiLetter = codePoint >= 65 && codePoint <= 90 || codePoint >= 97 && codePoint <= 122;
+    const isDigit = codePoint >= 48 && codePoint <= 57;
+    if (codePoint === 0) return '\uFFFD';
+    if (isAsciiLetter || character === '_' || character === '-' || isDigit && index > 0) return character;
+    return `\\${codePoint.toString(16)} `;
+  }).join('');
+  return `#${identifier}`;
+}
+
 export function wireAppEvents(handlers) {
-  document.querySelectorAll('[data-tab]').forEach((tab) => {
-    tab.onclick = () => handlers.onTabChange(tab.dataset.tab);
+  const tabs = Array.from(document.querySelectorAll('[data-tab]'));
+  tabs.forEach((tab, index) => {
+    tab.onclick = () => handlers.onTabChange(tab.dataset.tab, true);
+    tab.onkeydown = (event) => {
+      const last = tabs.length - 1;
+      const nextIndex = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+        : event.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length
+          : event.key === 'Home' ? 0 : event.key === 'End' ? last : null;
+      if (nextIndex === null) return;
+      event.preventDefault();
+      handlers.onTabChange(tabs[nextIndex].dataset.tab, true);
+    };
   });
   document.querySelectorAll('[data-action-tab]').forEach((button) => {
     button.onclick = () => handlers.onActionTab(button.dataset.actionTab);
@@ -11,10 +52,16 @@ export function wireAppEvents(handlers) {
   document.querySelectorAll('[data-ingredient-filter]').forEach((button) => {
     button.onclick = () => handlers.onIngredientFilter(button.dataset.ingredientFilter);
   });
-  document.querySelector('#weekStart')?.addEventListener('change', handlers.onWeekChange);
+  document.querySelector('#weekStart')?.addEventListener('change', (event) => handlers.onWeekChange(event.currentTarget.value));
   document.querySelector('#lotForm')?.addEventListener('submit', handlers.onLotSubmit);
   document.querySelector('#ingredientForm')?.addEventListener('submit', handlers.onIngredientSubmit);
   document.querySelector('#profileForm')?.addEventListener('submit', handlers.onProfileSubmit);
+  document.querySelectorAll('form').forEach((form) => {
+    form.addEventListener('invalid', (event) => {
+      event.preventDefault();
+      handlers.onInvalidField(event.target.id || event.target.name);
+    }, true);
+  });
   document.querySelectorAll('[data-profile-save]').forEach((button) => {
     button.onclick = (event) => {
       event.preventDefault();
@@ -25,9 +72,6 @@ export function wireAppEvents(handlers) {
     button.onclick = () => handlers.onProfilePhoto();
   });
   document.querySelectorAll('[data-swipe-delete]').forEach(setupSwipeDelete);
-  document.querySelectorAll('[data-add-ingredient]').forEach((button) => {
-    button.onclick = () => handlers.onQuickAdd(button.dataset.addIngredient, Number(button.dataset.addQuantity || 1));
-  });
   document.querySelectorAll('[data-lot-increment]').forEach((button) => {
     button.onclick = (event) => { event.stopPropagation(); handlers.onLotAdjust(button.dataset.lotIncrement, 1); };
   });
@@ -35,10 +79,16 @@ export function wireAppEvents(handlers) {
     button.onclick = (event) => { event.stopPropagation(); handlers.onLotAdjust(button.dataset.lotDecrement, -1); };
   });
   document.querySelectorAll('[data-delete-ingredient]').forEach((button) => {
-    button.onclick = () => handlers.onIngredientDelete(button.dataset.deleteIngredient, true);
+    button.onclick = () => handlers.onIngredientDelete(button.dataset.deleteIngredient);
+  });
+  document.querySelectorAll('[data-request-delete-ingredient]').forEach((button) => {
+    button.onclick = () => handlers.onIngredientDelete(button.dataset.requestDeleteIngredient);
   });
   document.querySelectorAll('[data-delete-stock]').forEach((button) => {
     button.onclick = () => handlers.onStockDelete(button.dataset.deleteStock);
+  });
+  document.querySelectorAll('[data-request-delete-stock]').forEach((button) => {
+    button.onclick = () => handlers.onStockDelete(button.dataset.requestDeleteStock);
   });
   document.querySelectorAll('[data-delete-lot]').forEach((button) => {
     button.onclick = (event) => { event.stopPropagation(); handlers.onLotDelete(button.dataset.deleteLot); };
@@ -71,6 +121,33 @@ export function wireAppEvents(handlers) {
   document.querySelectorAll('[data-ingredient-toggle]').forEach((button) => {
     button.onclick = (event) => { event.stopPropagation(); handlers.onIngredientToggle(button.dataset.ingredientToggle); };
   });
+  document.querySelector('[data-confirm-delete]')?.addEventListener('click', handlers.onConfirmDelete);
+  document.querySelector('[data-cancel-delete]')?.addEventListener('click', handlers.onCancelDelete);
+  setupConfirmationDialog(document.querySelector('dialog[data-confirmation-kind]'), handlers.onCancelDelete);
+  document.querySelector('[data-state-retry]')?.addEventListener('click', handlers.onRetryLoad);
+}
+
+function setupConfirmationDialog(dialog, onCancel) {
+  if (!(dialog instanceof HTMLDialogElement)) return;
+  dialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    onCancel();
+  });
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    if (!controls.length) return;
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  if (!dialog.open) dialog.showModal();
 }
 
 function setupDragSource(element, payload) {

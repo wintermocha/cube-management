@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { seedData } from '../src/lib/seed.js';
 import { stockSeverity, summarizeInventory, calculateForecast, parseKoreanAddStock, consumeLots, activeIngredients, removeIngredientFromState, removeStockForIngredientFromState, removeCubeLotFromState, adjustCubeLotCount, upsertCubeLotForDate } from '../src/lib/domain.js';
 import { mealScheduleCalendar } from '../src/lib/meal-table-view.js';
 import { renderAppHtml, renderAuthRequiredHtml } from '../src/lib/view.js';
+import * as domainModule from '../src/lib/domain.js';
+import * as viewModule from '../src/lib/view.js';
+import * as bindingsModule from '../src/lib/bindings.js';
 
 test('current stock severity follows PRD thresholds', () => {
   assert.equal(stockSeverity(4), 'ok');
@@ -293,4 +297,284 @@ test('lot decrement does not go below zero', () => {
   assert.equal(adjusted.remaining_count, 0);
   assert.equal(adjusted.initial_count, 3);
   assert.equal(result.adjusted_lot.used_count, 3);
+});
+
+test('ingredient reference counts include distinct combinations and active direct or indirect meal slots', () => {
+  const data = seedData();
+  data.combinations.push({ id: 'combo-second', household_id: 'home', name: '두 번째 조합' });
+  data.combinationItems.push(
+    { combination_id: 'combo-beef-broccoli', ingredient_id: 'ing-broccoli', cube_count: 2 },
+    { combination_id: 'combo-second', ingredient_id: 'ing-broccoli', cube_count: 1 },
+    { combination_id: 'combo-foreign', ingredient_id: 'ing-broccoli', cube_count: 9 },
+  );
+  data.mealPlanSlots = [
+    { id: 'slot-indirect', household_id: 'home', target_type: 'combination', combination_id: 'combo-second', status: 'planned' },
+    { id: 'slot-direct', household_id: 'home', target_type: 'ingredient', ingredient_id: 'ing-broccoli', status: 'planned' },
+    { id: 'slot-cancelled', household_id: 'home', target_type: 'ingredient', ingredient_id: 'ing-broccoli', status: 'cancelled' },
+    { id: 'slot-foreign', household_id: 'other-home', target_type: 'ingredient', ingredient_id: 'ing-broccoli', status: 'planned' },
+  ];
+
+  assert.deepEqual(domainModule.ingredientReferenceCounts(data, 'ing-broccoli'), {
+    combinationCount: 2,
+    mealSlotCount: 2,
+  });
+
+  data.ingredients = data.ingredients.filter((ingredient) => ingredient.id === 'ing-broccoli');
+  assert.deepEqual(domainModule.ingredientDeletionGuard(data, 'ing-broccoli'), {
+    kind: 'referenced',
+    combinationCount: 2,
+    mealSlotCount: 2,
+  });
+
+  const unreferenced = { ...data, combinations: [], combinationItems: [], mealPlanSlots: [] };
+  assert.deepEqual(domainModule.ingredientDeletionGuard(unreferenced, 'ing-broccoli'), { kind: 'minimum' });
+});
+
+test('semantic render contract exposes loading/error gates, roving tabs, field errors, and durable feedback', () => {
+  assert.equal(typeof viewModule.renderLoadingHtml, 'function');
+  assert.equal(typeof viewModule.renderLoadErrorHtml, 'function');
+  assert.equal(typeof viewModule.renderForbiddenHtml, 'function');
+
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const html = renderAppHtml({
+    activeTab: 'items',
+    state: data,
+    ingredients,
+    inventory,
+    critical: [],
+    warnings: [],
+    shortages: [],
+    nextMealCount: data.mealPlanSlots.length,
+    weekStart: '2026-07-06',
+    expandedStockId: null,
+    expandedIngredientId: null,
+    todayDate: '2026-07-11',
+    lotFormDefaults: null,
+    activeIngredientFilter: 'all',
+    pending: true,
+    feedback: { tone: 'error', message: '저장 충돌이 발생했어요.' },
+    fieldErrors: { ingredientName: '품목명을 입력해 주세요.' },
+  });
+
+  assert.match(html, /id="tab-items"[^>]*tabindex="0"/);
+  assert.match(html, /id="tab-today"[^>]*tabindex="-1"/);
+  assert.doesNotMatch(html, /role="listitem"/);
+  assert.match(html, /id="ingredientName"[^>]*aria-invalid="true"[^>]*aria-describedby="ingredientName-error"/);
+  assert.match(html, /id="ingredientName-error"[^>]*role="alert"/);
+  assert.match(html, /role="alert"[^>]*>저장 충돌이 발생했어요/);
+  assert.match(html, /button[^>]*type="submit"[^>]*disabled/);
+  const visibleCopy = html.replace(/<[^>]+>/g, ' ');
+  assert.doesNotMatch(visibleCopy, /planned|testing|tolerated|저장된 status/);
+});
+
+test('workspace tab accessible names contain every visible label token exactly once', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const html = renderAppHtml({
+    activeTab: 'today',
+    state: data,
+    ingredients,
+    inventory,
+    critical: [],
+    warnings: [],
+    shortages: [],
+    nextMealCount: data.mealPlanSlots.length,
+    weekStart: '2026-07-06',
+    expandedStockId: null,
+    expandedIngredientId: null,
+    todayDate: '2026-07-11',
+    lotFormDefaults: null,
+  });
+  const expectedTabs = [
+    ['today', '오늘', '체크'],
+    ['inventory', '큐브', '재고'],
+    ['meals', '식단', '계획'],
+    ['items', '품목', '관리'],
+    ['records', '기록', '변경'],
+  ];
+
+  for (const [id, labelText, detailText] of expectedTabs) {
+    const button = html.match(new RegExp(`<button id="tab-${id}"[^>]*>([\\s\\S]*?)<\\/button>`));
+    assert.ok(button, `${id} tab is rendered`);
+    const openingTag = button[0].match(/^<button[^>]*>/)?.[0] ?? '';
+    const explicitName = openingTag.match(/aria-label="([^"]*)"/)?.[1];
+    const textContent = button[1]
+      .replace(/<span class="material-symbols-outlined" aria-hidden="true">[\s\S]*?<\/span>/g, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const accessibleName = explicitName ?? textContent;
+
+    for (const token of [labelText, detailText]) {
+      assert.equal(accessibleName.split(token).length - 1, 1, `${id} accessible name contains ${token} exactly once`);
+    }
+  }
+});
+
+test('destructive confirmations and referenced ingredient blocks render safe actions', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const base = {
+    activeTab: 'items', state: data, ingredients, inventory, critical: [], warnings: [], shortages: [],
+    nextMealCount: data.mealPlanSlots.length, weekStart: '2026-07-06', expandedStockId: null,
+    expandedIngredientId: null, todayDate: '2026-07-11', lotFormDefaults: null,
+  };
+  const blocked = renderAppHtml({
+    ...base,
+    feedback: { tone: 'error', message: viewModule.ingredientReferenceMessage('브로콜리') },
+    ingredientReferenceAlert: { ingredientId: 'ing-broccoli', name: '브로콜리', combinationCount: 1, mealSlotCount: 1 },
+  });
+  assert.equal(blocked.includes('role="alert"'), true);
+  assert.equal((blocked.match(/role="alert"/g) || []).length, 1);
+  assert.equal(blocked.includes('role="region"'), true);
+  assert.equal(blocked.includes('“브로콜리” 품목은 조합·식단에 포함돼요. 식단을\u00a0먼저\u00a0확인해\u00a0주세요.'), true);
+  assert.equal(blocked.includes('조합 1개 · 식단 1개'), true);
+  assert.equal(blocked.includes('data-action-tab="meals"'), true);
+
+  const confirm = renderAppHtml({
+    ...base,
+    confirmation: { kind: 'ingredient', id: 'ing-beef', title: '소고기 품목 삭제', consequence: '삭제하면 되돌릴 수 없어요.' },
+  });
+  assert.equal(confirm.includes('role="dialog"'), true);
+  assert.equal(confirm.includes('<dialog'), true);
+  assert.equal(confirm.includes('aria-modal="true"'), true);
+  assert.equal(confirm.includes('>취소<'), true);
+  assert.equal(confirm.includes('data-confirm-delete'), true);
+});
+
+test('History and Settings render shared-storage user language without raw backend metadata', () => {
+  const data = seedData();
+  data.events = [{
+    id: 'event-localized', type: 'stock_add', actor_email: 'caregiver-a@example.com', source: 'manual',
+    created_at: '2026-07-03T00:00:00.000Z',
+  }];
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const base = {
+    state: data, ingredients, inventory, critical: [], warnings: [], shortages: [], nextMealCount: 0,
+    weekStart: '2026-07-06', expandedStockId: null, expandedIngredientId: null,
+    todayDate: '2026-07-11', lotFormDefaults: null,
+  };
+  const history = renderAppHtml({ ...base, activeTab: 'records' });
+  assert.equal(/@example\.com|\bmanual\b|2026-07-03T00:00:00/.test(history), false);
+  assert.equal(history.includes('보호자 · 직접 변경'), true);
+  assert.equal(history.includes('2026'), true);
+
+  const settings = renderAppHtml({ ...base, activeTab: 'settings' });
+  assert.equal(settings.includes('이 기기 저장소'), false);
+  assert.equal(settings.includes('공유 가정'), true);
+});
+
+test('post-action focus anchors are programmatically focusable and confirmation semantics are truthful', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const html = renderAppHtml({
+    activeTab: 'inventory', state: data, ingredients, inventory, critical: [], warnings: [], shortages: [],
+    nextMealCount: data.mealPlanSlots.length, weekStart: '2026-07-06', expandedStockId: null,
+    expandedIngredientId: null, todayDate: '2026-07-11', lotFormDefaults: null,
+    confirmation: { kind: 'lot', id: 'lot-beef-1', title: '재고 삭제', consequence: '되돌릴 수 없어요.' },
+  });
+
+  for (const headingId of ['stockAddTitle', 'cubeTitle', 'ingredientTitle', 'comboTitle', 'settingsTitle']) {
+    assert.match(html, new RegExp(`<h2 id="${headingId}"[^>]*tabindex="-1"`));
+  }
+  assert.match(html, /aria-modal="true"/);
+
+  assert.equal(bindingsModule.focusFallbackSelector('inventory'), '#stockAddTitle');
+  assert.equal(bindingsModule.focusFallbackSelector('meals'), '#mealTitle');
+  assert.equal(bindingsModule.focusFallbackSelector('unknown'), '#main');
+  assert.equal(bindingsModule.nextComboRemovalFocusId(['ing-a', 'ing-b', 'ing-c'], 'ing-b'), 'ing-c');
+  assert.equal(bindingsModule.nextComboRemovalFocusId(['ing-a', 'ing-b', 'ing-c'], 'ing-c'), 'ing-b');
+  assert.equal(bindingsModule.nextComboRemovalFocusId(['ing-a'], 'ing-a'), null);
+  assert.equal(bindingsModule.idSelector('comboCount-ing,["\\'), '#comboCount-ing\\2c \\5b \\22 \\5c ');
+});
+
+test('pending render disables every form control and removes all drag and drop entry points', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const html = renderAppHtml({
+    activeTab: 'meals', state: data, ingredients, inventory, critical: [], warnings: [], shortages: [],
+    nextMealCount: data.mealPlanSlots.length, weekStart: '2026-07-06', expandedStockId: null,
+    expandedIngredientId: null, todayDate: '2026-07-11', lotFormDefaults: null,
+    comboBuilderIngredientIds: ['ing-beef'], pending: true,
+  });
+
+  for (const controlId of ['lotMadeAt', 'ingredientName', 'comboName', 'profileDisplayName']) {
+    assert.match(html, new RegExp(`id="${controlId}"[^>]*disabled`));
+  }
+  assert.doesNotMatch(html, /draggable="true"|data-drag-combo|data-drag-ingredient|data-combo-drop-zone|data-meal-drop-date/);
+});
+
+test('narrow-mobile Korean copy avoids stable predicate and phrase orphans', () => {
+  const data = seedData();
+  const ingredients = activeIngredients(data.ingredients);
+  const inventory = summarizeInventory(ingredients, data.cubeLots);
+  const base = {
+    state: data, ingredients, inventory, critical: [], warnings: [], shortages: [],
+    nextMealCount: data.mealPlanSlots.length, weekStart: '2026-07-06', expandedStockId: null,
+    expandedIngredientId: null, todayDate: '2026-07-11', lotFormDefaults: null,
+  };
+  const surfaces = [
+    renderAppHtml({ ...base, activeTab: 'meals' }),
+    renderAppHtml({ ...base, activeTab: 'settings' }),
+    renderAppHtml({
+      ...base,
+      activeTab: 'items',
+      ingredientReferenceAlert: { ingredientId: 'ing-broccoli', name: '브로콜리', combinationCount: 1, mealSlotCount: 1 },
+    }),
+    viewModule.renderLoadErrorHtml(),
+    renderAuthRequiredHtml({ loginHref: 'https://jw-cube.taewooo.kim/' }),
+    readFileSync(new URL('../src/app.js', import.meta.url), 'utf8'),
+  ].join('\n');
+
+  for (const unstablePhrase of [
+    /이번 주에/,
+    /사용 중이에요/,
+    /삭제 전에/,
+    /함께 보여요/,
+    /되돌릴 수 없어요/,
+    /삭제할 수 없어요/,
+    /공유 데이터를 불러오지 못했어요/,
+    /다시 로그인해 주세요/,
+    /시도해 주세요/,
+  ]) {
+    assert.doesNotMatch(surfaces, unstablePhrase);
+  }
+  assert.match(surfaces, /식단 확인/);
+  assert.match(surfaces, /조합·식단에 포함돼요/);
+});
+
+test('restored focus visibility adjusts only controls outside the dock-safe viewport', () => {
+  assert.equal(typeof viewModule.focusedControlScrollDelta, 'function');
+  assert.equal(viewModule.focusedControlScrollDelta({
+    controlTop: 690,
+    controlBottom: 742,
+    viewportTop: 150,
+    viewportBottom: 741,
+  }), 17);
+  assert.equal(viewModule.focusedControlScrollDelta({
+    controlTop: 420,
+    controlBottom: 472,
+    viewportTop: 150,
+    viewportBottom: 741,
+  }), 0);
+  assert.equal(viewModule.focusedControlScrollDelta({
+    controlTop: 140,
+    controlBottom: 192,
+    viewportTop: 150,
+    viewportBottom: 741,
+  }), -26);
+
+  const appSource = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  const bindingsSource = readFileSync(new URL('../src/lib/bindings.js', import.meta.url), 'utf8');
+  assert.match(appSource, /scrollableAncestor/);
+  assert.match(appSource, /focusedControlScrollDelta/);
+  assert.match(bindingsSource, /showModal/);
+  assert.match(bindingsSource, /event\.key !== 'Tab'/);
 });

@@ -13,6 +13,33 @@ export function activeIngredients(ingredients) {
   return ingredients.filter((ingredient) => ingredient.status !== 'cancelled' && !ingredient.deleted_at);
 }
 
+export function ingredientReferenceCounts(data, ingredientId) {
+  const ingredient = activeIngredients(data.ingredients || []).find((item) => item.id === ingredientId);
+  if (!ingredient) return { combinationCount: 0, mealSlotCount: 0 };
+  const householdId = ingredient.household_id;
+  const householdCombinations = new Set((data.combinations || [])
+    .filter((combination) => !householdId || combination.household_id === householdId)
+    .map((combination) => combination.id));
+  const referencingCombinations = new Set((data.combinationItems || [])
+    .filter((item) => item.ingredient_id === ingredientId && householdCombinations.has(item.combination_id))
+    .map((item) => item.combination_id));
+  const mealSlotIds = new Set((data.mealPlanSlots || [])
+    .filter((slot) => slot.status !== 'cancelled' && (!householdId || slot.household_id === householdId))
+    .filter((slot) => (slot.target_type === 'ingredient' && slot.ingredient_id === ingredientId)
+      || (slot.target_type === 'combination' && referencingCombinations.has(slot.combination_id)))
+    .map((slot) => slot.id));
+  return { combinationCount: referencingCombinations.size, mealSlotCount: mealSlotIds.size };
+}
+
+export function ingredientDeletionGuard(data, ingredientId) {
+  const ingredients = activeIngredients(data.ingredients || []);
+  if (!ingredients.some((ingredient) => ingredient.id === ingredientId)) return { kind: 'missing' };
+  const counts = ingredientReferenceCounts(data, ingredientId);
+  if (counts.combinationCount > 0 || counts.mealSlotCount > 0) return { kind: 'referenced', ...counts };
+  if (ingredients.length <= 1) return { kind: 'minimum' };
+  return { kind: 'confirm' };
+}
+
 export function summarizeInventory(ingredients, lots) {
   return activeIngredients(ingredients).map((ingredient) => {
     const ingredientLots = lots.filter((lot) => lot.ingredient_id === ingredient.id && !lot.deleted_at);
