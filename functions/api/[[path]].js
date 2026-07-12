@@ -16,7 +16,7 @@ export async function onRequest(context) {
     const householdId = member.household_id;
 
     if (request.method === 'GET' && path === '/state') return json(await readState(env.DB, householdId));
-    if (request.method === 'PUT' && path === '/state') return handlePutState(env.DB, householdId, await readJson(request));
+    if (request.method === 'PUT' && path === '/state') return await handlePutState(env.DB, householdId, member.email, await readJson(request));
     if (request.method === 'GET' && path === '/child-profile') return json(await env.DB.prepare('SELECT id,display_name,birth_date,notes FROM child_profiles WHERE household_id=?').bind(householdId).first());
     if (request.method === 'PATCH' && path === '/child-profile') {
       const body = await request.json();
@@ -38,6 +38,8 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === '/cube-lots') {
       const body = await request.json();
       if (!body.ingredient_id || !Number.isInteger(body.initial_count) || body.initial_count < 1 || body.initial_count > 200) return json({ error: 'validation_failed' }, 422);
+      const localIngredient = await env.DB.prepare('SELECT id FROM ingredients WHERE household_id=? AND id=? LIMIT 1').bind(householdId, body.ingredient_id).first();
+      if (!localIngredient) return json({ error: 'validation_failed', reason: 'foreign_or_missing_reference' }, 422);
       const lot = { id: id('lot'), household_id: householdId, ingredient_id: body.ingredient_id, made_at: body.made_at || new Date().toISOString().slice(0,10), expires_at: body.expires_at || null, initial_count: body.initial_count, remaining_count: body.initial_count, grams_per_cube: body.grams_per_cube || null, storage_location: body.storage_location || null, created_at: now(), updated_at: now() };
       await env.DB.prepare('INSERT INTO cube_lots VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(lot.id, lot.household_id, lot.ingredient_id, lot.made_at, lot.expires_at, lot.initial_count, lot.remaining_count, lot.grams_per_cube, lot.storage_location, lot.created_at, lot.updated_at).run();
       const event_id = await event(env.DB, householdId, actor, 'manual', 'stock_add', { lot }, null, lot);
@@ -48,8 +50,8 @@ export async function onRequest(context) {
     if (request.method === 'GET' && path === '/approval-requests') return json((await all(env.DB, 'SELECT * FROM approval_requests WHERE household_id=? ORDER BY created_at DESC', householdId)).map(r => ({ ...r, payload: JSON.parse(r.payload_json) })));
     if (request.method === 'POST' && path === '/ai-commands') return handleAi(env.DB, householdId, actor, await request.json());
     return json({ error: 'not_found' }, 404);
-  } catch (error) {
-    return json({ error: 'internal_error', detail: error.message }, 500);
+  } catch {
+    return json({ error: 'internal_error' }, 500);
   }
 }
 
@@ -85,15 +87,23 @@ async function readState(db, householdId) {
     approvalRequests: await all(db, 'SELECT * FROM approval_requests WHERE household_id=? ORDER BY created_at DESC', householdId),
   };
 }
-async function handlePutState(db, householdId, body) {
-  const parsed = normalizeStateForD1(body, householdId);
+export async function handlePutState(db, householdId, actor, body) {
+  const parsed = normalizeStateForD1(body, householdId, actor);
   if (!parsed.ok) return json({ error: 'validation_failed' }, 422);
+  if (!hasValidStateGraph(parsed.state)) return json({ error: 'validation_failed', reason: 'foreign_or_missing_reference' }, 422);
   const currentVersion = await stateVersion(db, householdId);
   if (parsed.syncVersion !== currentVersion) return json({ error: 'version_conflict', state: await readState(db, householdId) }, 409);
-  await db.batch(buildReplaceStateStatements(db, householdId, parsed.state, currentVersion + 1));
+  const referencedDeletion = await referencedIngredientDeletion(db, householdId, parsed.state);
+  if (referencedDeletion) return json({ error: 'ingredient_referenced', ...referencedDeletion }, 409);
+  try {
+    await db.batch(buildReplaceStateStatements(db, householdId, parsed.state, currentVersion, currentVersion + 1));
+  } catch (error) {
+    if (await stateVersion(db, householdId) !== currentVersion) return json({ error: 'version_conflict', state: await readState(db, householdId) }, 409);
+    throw error;
+  }
   return json(await readState(db, householdId));
 }
-export function normalizeStateForD1(body, householdId) {
+export function normalizeStateForD1(body, householdId, actor) {
   if (!isObject(body)) return { ok: false };
   const syncVersion = Number(body.syncVersion);
   if (!Number.isInteger(syncVersion) || syncVersion < 1) return { ok: false };
@@ -101,20 +111,61 @@ export function normalizeStateForD1(body, householdId) {
   if (!names.every((name) => Array.isArray(body[name]))) return { ok: false };
   const state = {
     childProfile: normalizeChildProfile(body.childProfile, householdId),
-    ingredients: rows(body.ingredients.filter((row) => !row.deleted_at && row.status !== 'cancelled'), ['id','name','category','status','notes','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
-    cubeLots: rows(body.cubeLots.filter((row) => !row.deleted_at), ['id','ingredient_id','made_at','expires_at','initial_count','remaining_count','grams_per_cube','storage_location','description','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId, storage_location: row.description || row.storage_location || null })),
+    ingredients: rows(body.ingredients.filter((row) => isObject(row) && !row.deleted_at && row.status !== 'cancelled'), ['id','name','category','status','notes','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
+    cubeLots: rows(body.cubeLots.filter((row) => isObject(row) && !row.deleted_at), ['id','ingredient_id','made_at','expires_at','initial_count','remaining_count','grams_per_cube','storage_location','description','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId, storage_location: row.description || row.storage_location || null })),
     combinations: rows(body.combinations, ['id','name','stage','texture','notes','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
     combinationItems: rows(body.combinationItems, ['combination_id','ingredient_id','cube_count']),
     mealPlanSlots: rows(body.mealPlanSlots, ['id','date','meal_type','target_type','combination_id','ingredient_id','cube_count','status','created_at','updated_at']).map((row) => ({ ...row, household_id: householdId })),
-    events: rows(body.events, ['id','actor_email','source','type','payload_json','before_json','after_json','created_at','undo_event_id']).map((row) => ({ ...row, household_id: householdId })),
+    events: rows(body.events, ['id','actor_email','source','type','payload_json','before_json','after_json','created_at','undo_event_id']).map((row) => ({ ...row, household_id: householdId, actor_email: actor })),
   };
   if (!state.childProfile?.id || !state.childProfile.display_name) return { ok: false };
   if (!state.ingredients.length || !state.combinations.length) return { ok: false };
   if (state.ingredients.some((row) => !row.id || !row.name || !['not_tried','planned','testing','tolerated','suspected_reaction'].includes(row.status))) return { ok: false };
   return { ok: true, syncVersion, state };
 }
-function buildReplaceStateStatements(db, householdId, state, nextVersion) {
+function hasValidStateGraph(state) {
+  const ingredientIds = new Set(state.ingredients.map((ingredient) => ingredient.id));
+  const combinationIds = new Set(state.combinations.map((combination) => combination.id));
+  const validCombinationItems = state.combinationItems.every((item) => combinationIds.has(item.combination_id) && ingredientIds.has(item.ingredient_id));
+  const validCubeLots = state.cubeLots.every((lot) => ingredientIds.has(lot.ingredient_id));
+  const validMealSlots = state.mealPlanSlots.every((slot) => {
+    if (slot.target_type === 'combination') return combinationIds.has(slot.combination_id) && slot.ingredient_id == null;
+    if (slot.target_type === 'ingredient') return ingredientIds.has(slot.ingredient_id) && slot.combination_id == null;
+    return false;
+  });
+  return validCombinationItems && validCubeLots && validMealSlots;
+}
+async function referencedIngredientDeletion(db, householdId, state) {
+  const incomingIngredientIds = new Set(state.ingredients.map((ingredient) => ingredient.id));
+  const currentIngredients = await all(db, 'SELECT id FROM ingredients WHERE household_id=?', householdId);
+  const removedIngredientIds = new Set(currentIngredients.map((ingredient) => ingredient.id).filter((ingredientId) => !incomingIngredientIds.has(ingredientId)));
+  if (!removedIngredientIds.size) return null;
+
+  const combinationReferences = await all(db, 'SELECT ci.ingredient_id,ci.combination_id FROM combination_items ci JOIN combinations c ON c.id=ci.combination_id WHERE c.household_id=?', householdId);
+  const removedCombinationReferences = combinationReferences.filter((reference) => removedIngredientIds.has(reference.ingredient_id));
+  const referencedCombinationIds = new Set(removedCombinationReferences.map((reference) => reference.combination_id));
+  const referencedIngredientIds = new Set(removedCombinationReferences.map((reference) => reference.ingredient_id));
+  const activeSlots = await all(db, "SELECT id,target_type,combination_id,ingredient_id FROM meal_plan_slots WHERE household_id=? AND status<>'cancelled'", householdId);
+  const referencedSlotIds = new Set();
+  for (const slot of activeSlots) {
+    if (slot.target_type === 'ingredient' && removedIngredientIds.has(slot.ingredient_id)) {
+      referencedIngredientIds.add(slot.ingredient_id);
+      referencedSlotIds.add(slot.id);
+    } else if (slot.target_type === 'combination' && referencedCombinationIds.has(slot.combination_id)) {
+      referencedSlotIds.add(slot.id);
+    }
+  }
+  if (!referencedIngredientIds.size) return null;
+  return {
+    ingredient_ids: [...referencedIngredientIds].sort(),
+    combination_count: referencedCombinationIds.size,
+    slot_count: referencedSlotIds.size,
+  };
+}
+function buildReplaceStateStatements(db, householdId, state, currentVersion, nextVersion) {
+  const updatedAt = now();
   const statements = [
+    db.prepare('INSERT INTO state_versions (household_id,version,updated_at) VALUES (?,?,?) ON CONFLICT(household_id) DO UPDATE SET version=CASE WHEN state_versions.version=? THEN excluded.version ELSE NULL END, updated_at=CASE WHEN state_versions.version=? THEN excluded.updated_at ELSE state_versions.updated_at END').bind(householdId, nextVersion, updatedAt, currentVersion, currentVersion),
     db.prepare('DELETE FROM meal_plan_slots WHERE household_id=?').bind(householdId),
     db.prepare('DELETE FROM combination_items WHERE combination_id IN (SELECT id FROM combinations WHERE household_id=?)').bind(householdId),
     db.prepare('DELETE FROM combinations WHERE household_id=?').bind(householdId),
@@ -129,7 +180,6 @@ function buildReplaceStateStatements(db, householdId, state, nextVersion) {
   pushRows(statements, db, 'INSERT INTO combination_items VALUES (?,?,?)', state.combinationItems, ['combination_id','ingredient_id','cube_count']);
   pushRows(statements, db, 'INSERT INTO meal_plan_slots VALUES (?,?,?,?,?,?,?,?,?,?,?)', state.mealPlanSlots, ['id','household_id','date','meal_type','target_type','combination_id','ingredient_id','cube_count','status','created_at','updated_at']);
   pushRows(statements, db, 'INSERT OR IGNORE INTO events VALUES (?,?,?,?,?,?,?,?,?,?)', state.events, ['id','household_id','actor_email','source','type','payload_json','before_json','after_json','created_at','undo_event_id']);
-  statements.push(db.prepare('INSERT INTO state_versions (household_id,version,updated_at) VALUES (?,?,?) ON CONFLICT(household_id) DO UPDATE SET version=excluded.version, updated_at=excluded.updated_at').bind(householdId, nextVersion, now()));
   return statements;
 }
 function pushRows(statements, db, sql, rowsToInsert, fields) {
